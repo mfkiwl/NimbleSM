@@ -24,6 +24,10 @@ SET(HAVE_KOKKOS OFF CACHE BOOL "Whether to use Kokkos")
 SET(HAVE_NIMBLE_EXTRAS OFF CACHE BOOL "Whether to use NimbleSM Extras")
 SET(NIMBLE_NVIDIA_BUILD OFF CACHE BOOL "Whether to use Nvidia build")
 
+if (HAVE_UQ)
+  SET(NIMBLE_HAVE_UQ TRUE)
+endif()
+
 if (HAVE_DARMA)
   find_package(DARMA REQUIRED COMPONENTS ${DARMA_BACKEND_PKG})
   if (DARMA_FOUND)
