@@ -25,7 +25,11 @@ SET(HAVE_NIMBLE_EXTRAS OFF CACHE BOOL "Whether to use NimbleSM Extras")
 SET(NIMBLE_NVIDIA_BUILD OFF CACHE BOOL "Whether to use Nvidia build")
 
 if (HAVE_UQ)
+  MESSAGE("-- Compiling with UQ:")
   SET(NIMBLE_HAVE_UQ TRUE)
+  ADD_DEFINITIONS(-DNIMBLE_HAVE_UQ)
+else()
+  MESSAGE("-- UQ is NOT enabled.")
 endif()
 
 if (HAVE_DARMA)

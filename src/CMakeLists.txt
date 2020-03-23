@@ -29,6 +29,10 @@ IF(NOT NIMBLE_HAVE_KOKKOS)
   set(NIMBLE_SOURCES ${NIMBLE_SOURCES} nimble_rve.cc)
 ENDIF()
 
+IF(NIMBLE_HAVE_UQ)
+  set(NIMBLE_SOURCES ${NIMBLE_SOURCES} nimble_uq.cc)
+ENDIF()
+
 set(NIMBLE_KOKKOS_SOURCES
   nimble_kokkos_data_manager.cc
   nimble_kokkos_block.cc
