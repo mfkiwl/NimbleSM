@@ -51,6 +51,8 @@
 class Viewify {
 
  public:
+ 
+ Viewify() {}
 
  Viewify(double* data, int dim)
    : data_(data), dim_(dim) {}
