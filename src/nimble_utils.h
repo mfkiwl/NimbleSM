@@ -51,6 +51,8 @@
 #include <iostream>
 #include <iomanip>
 #include <sstream>
+#include <string>
+#include <vector>
 
 // Need to avoid conflicts with NimbleSMExtras definitions
 #ifndef K_X
@@ -1156,6 +1158,8 @@ void Log_Rotation(const ScalarT* const rotation,
     SkewPart_Full33(rotation, rotation_skew);
     Mult_Scalar_Full33(a, rotation_skew, log_rotation);
   }
+
+
 }
 
 #endif // NIMBLE_UTILS_H
