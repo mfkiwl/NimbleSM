@@ -13,10 +13,6 @@ configure_file(${CMAKE_CURRENT_SOURCE_DIR}/uq_wave_in_bar.gold.e
                ${CMAKE_CURRENT_BINARY_DIR}/uq_wave_in_bar.gold.e COPYONLY)
 configure_file(${CMAKE_CURRENT_SOURCE_DIR}/uq_wave_in_bar.exodiff
                ${CMAKE_CURRENT_BINARY_DIR}/uq_wave_in_bar.exodiff COPYONLY)
-configure_file(${CMAKE_CURRENT_SOURCE_DIR}/PostProcess.py
-               ${CMAKE_CURRENT_BINARY_DIR}/PostProcess.py COPYONLY)
-#configure_file(${CMAKE_CURRENT_SOURCE_DIR}/exodus.py
-#               ${CMAKE_CURRENT_BINARY_DIR}/exodus.py COPYONLY)
 configure_file(${CMAKE_CURRENT_SOURCE_DIR}/postprocess.sh
                ${CMAKE_CURRENT_BINARY_DIR}/postprocess.sh COPYONLY)
 configure_file(${CMAKE_CURRENT_SOURCE_DIR}/scrape_1D.py

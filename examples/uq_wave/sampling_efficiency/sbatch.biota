@@ -1,0 +1,20 @@
+#!/bin/bash
+#SBATCH -p hpc # partition (queue)
+#SBATCH --nodes 1  
+#SBATCH --time=16-00
+#SBATCH --account=FY140200
+#SBATCH --job-name {JOBNAME}
+#SBATCH --mail-type=ALL
+nodes=$SLURM_JOB_NUM_NODES
+cores=64
+n=$(($nodes*$cores))
+if [ -e FINISHED ]; then rm FINISHED ; fi
+started=`date`
+echo ">>> $started"
+touch RUNNING
+rm -rf out.* in.* run_*
+../../../tools/sample.py sample.in
+rm RUNNING
+finished=`date`
+echo "<<< $finished $started"
+echo "$started $finished" > FINISHED

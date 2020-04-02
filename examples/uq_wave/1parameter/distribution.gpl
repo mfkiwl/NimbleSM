@@ -1,0 +1,55 @@
+#!/usr/bin/env gnuplot
+set macros
+! collect.sh
+ps="term post eps color lw 2 22"
+png="term png"
+screen="term x11"
+
+set style line 1 lt 1 lc rgb "black"
+set style line 2 lt 1 lc rgb "red"
+
+scale = 1.0
+set xlabel "STRESS"
+set ylabel "DISTRIBUTION"
+unset ytics
+
+set xrange [-15:15]
+
+plot \
+"solution.dat" u (($4)*scale):(1) smooth kdensity w l ls 1 t ""
+pause -1 @file
+
+plot \
+"stress.dat" u (($4)*scale):(1)  smooth kdensity w l ls 2 t ""
+pause -1 @file
+
+do for [i=1:9] {
+plot \
+"stress.dat"   u (($4)*scale):(1) index i smooth kdensity w l ls 2 t "", \
+"solution.dat" u (($4)*scale):(1) index i smooth kdensity w l ls 1 t ""
+pause -1 "step ".i
+}
+
+file='"stress_distribution_evolution.png"'
+set @png ; set output @file
+set multiplot layout 3,3 
+do for [i=1:9] {
+plot \
+"stress.dat"   u (($4)*scale):(1) index i smooth kdensity w l ls 2 t "", \
+"solution.dat" u (($4)*scale):(1) index i smooth kdensity w l ls 1 t ""
+}
+unset multiplot 
+set @screen ; set output
+
+file='"stress_distribution.png"'
+plot \
+"stress.dat"   u (($4)*scale):(1)  smooth kdensity w l ls 2 t "", \
+"solution.dat" u (($4)*scale):(1)  smooth kdensity w l ls 1 t ""
+pause -1 @file
+set @png ; set output @file ; repl
+exit
+
+file='"stress_distribution.eps"'
+repl
+set @ps ; set output @file ; repl
+!epstopdf @file; rm @file

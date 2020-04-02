@@ -1,0 +1,36 @@
+#!/usr/bin/env gnuplot
+set macros
+png="term png"
+screen="term x11"
+set style line 1 lt 1 lc rgb "black"
+set style line 2 lt 1 lc rgb "blue"
+set style line 3 lt 1 lc rgb "red"
+
+data="compare.dat"
+
+set key bottom right
+set logscale y
+set format y "10^{%T}"
+umax = 1.0
+
+set xlabel "TIME"
+
+file='"error.png"'
+set ylabel "ERROR"
+plot \
+data u 1:2 w lp ls 1 t "FE", \
+data u 1:3 w l ls 2 t "SURROGATE", \
+data u 1:4 w l ls 3 t "UQ"
+pause -1 @file
+set @png ; set output @file ; repl ; set @screen ; set output
+
+exit
+
+file='"trajectory.png"'
+set ylabel "DISPLACEMENT"
+plot \
+data u 1:2 w lp ls 1 t "ANALYTICAL", \
+data u 1:3 w l ls 2 t "FE", \
+data u 1:4 w l ls 3 t "SURROGATE"
+pause -1 @file
+set @png ; set output @file ; repl ; set @screen ; set output

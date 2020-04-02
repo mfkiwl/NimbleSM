@@ -368,7 +368,6 @@ int ExplicitTimeIntegrator(nimble::Parser & parser,
   std::vector<Viewify> bc_offnom_velocity_views(0);
   bool uq_enabled = parser.HasUq();
   if(uq_enabled) {
-
     int n_uq_samples = uq_model.num_samples_;
     for(int nuq=0; nuq<n_uq_samples; nuq++){
       offnominal_displacements.push_back( macroscale_data.GetNodeData( macroscale_data.GetFieldId("off_nom_displacement_"+std::to_string(nuq) ) ) );
@@ -540,6 +539,7 @@ int ExplicitTimeIntegrator(nimble::Parser & parser,
 
 #ifdef NIMBLE_HAVE_UQ
     if(uq_enabled) {
+      // HACK specific to 1D & linear in parameter
       // Compute displacement sensitivites, i.e. \partial(U)/\partial(\lambda)
       // Loop over parameters and do one-by-one
       for(int np=0; np<uq_parameters.GetNumParams(); np++){
