@@ -6,7 +6,7 @@ set style line 1 lt 1 lc rgb "black"
 set style line 2 lt 1 lc rgb "blue"
 set style line 3 lt 1 lc rgb "red"
 
-data="compare.dat"
+data="error.dat"
 
 set key bottom right
 set logscale y

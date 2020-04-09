@@ -1,0 +1,26 @@
+#!/usr/bin/env gnuplot
+set macros
+png="term png"
+screen="term x11"
+set style line 1 lt 1 lw 2 lc rgb "black"
+set style line 2 lt 1 lw 3 lc rgb "blue"
+set style line 3 lt 1 lw 2 lc rgb "red"
+
+
+unset ytics 
+unset ylabel
+set xlabel "DISPLACEMENT"
+
+files = system("ls dist_*.dat")
+n = words(files)
+
+do for [i=1:n] {
+data=word(files,i)
+file=substr(data,1,strlen(data)-4).".png"
+plot \
+data u 1:2 w l ls 1 t "ANALYTIC", \
+data u 3:4 w l ls 2 t "FE", \
+data u 5:6 w l ls 3 t "SURROGATE"
+pause -1 file
+set @png ; set output file ; repl ; set @screen ; set output
+}

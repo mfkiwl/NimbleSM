@@ -1,5 +1,9 @@
 #!/bin/bash 
 nimble="/projects/uq/build_NimbleSM_UQ/src/NimbleSM_Serial"
+seed="1234"
+seed="1235"
+seed="1236"
+seed="1237"
 parameter="G"
 mean=1.5e12
 #std=1.0e9
@@ -8,6 +12,7 @@ std=1.0e10
 #nsamples=10
 #nsamples=100
 nsamples=30  # 40 stalls
+nsamples=40
 addfields=""
 for i in `seq $nsamples`; do
   j=$((i-1))
@@ -22,7 +27,7 @@ function clean() {
 
 function run_uq() {
   echo ">> running uq $nsamples $mean +/- $std"
-  sed "s/\#uq/uq/g;s/{ADDFIELDS}/$addfields/g;s/{NSAMPLES}/$nsamples/g;s/{STD}/$std/g;s/{$parameter}/$mean/g" wave.in.tmpl > wave.in
+  sed "s/\#uq/uq/g;s/{ADDFIELDS}/$addfields/g;s/{NSAMPLES}/$nsamples/g;s/{STD}/$std/g;s/{$parameter}/$mean/g;s/{SEED}/$seed/g" wave.in.tmpl > wave.in
   $nimble wave.in &> uq.log
   ../extract.py wave.serial.e > extract.log
 # cmd="$nimble wave.in &> uq.log"
@@ -39,7 +44,7 @@ function run_exact() {
 }
 
 function compare() {
-  compare.py > compare.dat
+  compare.py > compare.log
 }
 
 clean
