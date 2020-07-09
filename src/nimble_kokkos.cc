@@ -50,14 +50,15 @@
 #include "nimble_exodus_output.h"
 #include "nimble_exodus_output_manager.h"
 #include "nimble_boundary_condition_manager.h"
-#include "nimble_view.h"
+//#include "nimble_view.h"
 #include "nimble_kokkos_defs.h"
 #include "nimble_kokkos_data_manager.h"
 #include "nimble_kokkos_block.h"
-#include "nimble_contact_manager.h"
-#include "nimble_utils.h"
+//#include "nimble_contact_manager.h"
+//#include "nimble_utils.h"
 #include "nimble_kokkos_material_factory.h"
 #include "nimble_kokkos.h"
+#include "contact/kokkos_contact_manager.h"
 
 #ifdef NIMBLE_HAVE_MPI
 #include "nimble.mpi.utils.h"
@@ -372,7 +373,8 @@ void NimbleKokkosMain(std::shared_ptr<nimble_kokkos::MaterialFactory> material_f
   std::vector<double> mpi_scalar_buffer(mpi_scalar_dimension * num_nodes);
   int mpi_vector_dimension = 3;
 
-  nimble::ContactManager contact_manager(contact_interface);
+  nimble::KokkosContactManager contact_manager(contact_interface);
+
   bool contact_enabled = parser->HasContact();
   bool contact_visualization = parser->ContactVisualization();
   if (contact_enabled) {

@@ -541,16 +541,16 @@ int ExplicitTimeIntegrator(nimble::Parser & parser,
 
     // Evaluate the contact force
     // TODO: remove this ifdef when parallel contact is supported with other backends
-#ifdef NIMBLE_HAVE_BVH
     if (contact_enabled) {
+#ifdef NIMBLE_HAVE_BVH
       contact_manager.ApplyDisplacements(displacement);
-      contact_manager.ComputeParallelContactForce(step+1, is_output_step);
+      contact_manager.ComputeContactForce(step+1, is_output_step);
       contact_manager.GetForces(contact_force);
       if (contact_visualization && is_output_step) {
         contact_manager.ContactVisualizationWriteStep(time_current);
       }
-    }
 #endif
+    }
 
 	{
 	  nimble::quanta::stopwatch vector_reduction_timer;

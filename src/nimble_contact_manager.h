@@ -56,11 +56,6 @@
 #include "nimble_exodus_output.h"
 #include "nimble.mpi.utils.h"
 
-#ifdef NIMBLE_HAVE_KOKKOS
-  #include "nimble_kokkos_defs.h"
-  #include "nimble_kokkos_contact_defs.h"
-#endif
-
 #ifdef NIMBLE_HAVE_BVH
   #include <bvh/kdop.hpp>
   #include <bvh/tree.hpp>
@@ -130,12 +125,12 @@ class ContactInterface;
                                     ArgT& contact_nodes,
                                     ArgT& contact_faces) const ;
 
-    void BoundingBox(double& x_min,
+    virtual void BoundingBox(double& x_min,
                      double& x_max,
                      double& y_min,
                      double& y_max,
                      double& z_min,
-                     double& z_max) const ;
+                     double& z_max) const;
 
     double BoundingBoxAverageCharacteristicLengthOverAllRanks() const ;
 
@@ -154,45 +149,6 @@ class ContactInterface;
       }
     }
 
-#ifdef NIMBLE_HAVE_KOKKOS
-
-    void ApplyDisplacements(nimble_kokkos::DeviceVectorNodeView displacement_d) {
-
-      int num_nodes_in_contact_manager = node_ids_d_.extent(0);
-      int num_contact_node_entities = contact_nodes_d_.extent(0);
-      int num_contact_face_entities = contact_faces_d_.extent(0);
-
-      // circumvent lambda *this glitch
-      nimble_kokkos::DeviceIntegerArrayView node_ids = node_ids_d_;
-      nimble_kokkos::DeviceScalarNodeView model_coord = model_coord_d_;
-      nimble_kokkos::DeviceScalarNodeView coord = coord_d_;
-      nimble_kokkos::DeviceContactEntityArrayView contact_nodes = contact_nodes_d_;
-      nimble_kokkos::DeviceContactEntityArrayView contact_faces = contact_faces_d_;
-
-      Kokkos::parallel_for("ContactManager::ApplyDisplacements set coord_d_ vector",
-                           num_nodes_in_contact_manager,
-                           KOKKOS_LAMBDA(const int i) {
-        int node_id = node_ids(i);
-        coord(3*i)   = model_coord(3*i)   + displacement_d(node_id, 0);
-        coord(3*i+1) = model_coord(3*i+1) + displacement_d(node_id, 1);
-        coord(3*i+2) = model_coord(3*i+2) + displacement_d(node_id, 2);
-      });
-
-      Kokkos::parallel_for("ContactManager::ApplyDisplacements set contact node entity displacements",
-                         num_contact_node_entities,
-                         KOKKOS_LAMBDA(const int i_node) {
-        contact_nodes(i_node).SetCoordinates(coord);
-      });
-
-      Kokkos::parallel_for("ContactManager::ApplyDisplacements set contact face entity displacements",
-                         num_contact_face_entities,
-                         KOKKOS_LAMBDA(const int i_face) {
-        contact_faces(i_face).SetCoordinates(coord);
-      });
-
-    }
-#endif
-
     void GetForces(double * const contact_force) {
       for (unsigned int i_node=0; i_node<node_ids_.size() ; i_node++) {
         int node_id = node_ids_[i_node];
@@ -202,27 +158,7 @@ class ContactInterface;
       }
     }
 
-#ifdef NIMBLE_HAVE_KOKKOS
-    void GetForces(nimble_kokkos::DeviceVectorNodeView contact_force_d) {
-
-      int num_nodes_in_contact_manager = node_ids_d_.extent(0);
-
-      // circumvent lambda *this glitch
-      nimble_kokkos::DeviceIntegerArrayView node_ids = node_ids_d_;
-      nimble_kokkos::DeviceScalarNodeView force = force_d_;
-
-      Kokkos::parallel_for("ContactManager::GetForces",
-                         num_nodes_in_contact_manager,
-                         KOKKOS_LAMBDA(const int i) {
-        int node_id = node_ids(i);
-        contact_force_d(node_id, 0) = force(3*i);
-        contact_force_d(node_id, 1) = force(3*i+1);
-        contact_force_d(node_id, 2) = force(3*i+2);
-      });
-    }
-#endif
-
-    void ComputeContactForce(int step, bool debug_output);
+    virtual void ComputeContactForce(int step, bool debug_output);
 
     void BruteForceBoxIntersectionSearch(std::vector<ContactEntity> const & nodes,
                                          std::vector<ContactEntity> const & triangles);
@@ -238,15 +174,35 @@ class ContactInterface;
 
   protected:
 
+    virtual void InitializeContactData(GenesisMesh const & mesh,
+                                       std::vector< std::vector<int> > const & master_skin_faces,
+                                       std::vector<int> const & master_skin_entity_ids,
+                                       std::vector<int> const & slave_node_ids,
+                                       std::vector<int> const & slave_node_entity_ids,
+                                       std::map<int, double> const & slave_node_char_lens)
+    {
+      contact_nodes_.resize(slave_node_ids.size());
+      contact_faces_.resize(4*master_skin_faces.size());
+      CreateContactNodesAndFaces< std::vector<ContactEntity> >(master_skin_faces, master_skin_entity_ids,
+                                                             slave_node_ids, slave_node_entity_ids, slave_node_char_lens,
+                                                             contact_nodes_, contact_faces_);
+    }
+
     void InitializeContactVisualizationImpl(std::string const & contact_visualization_exodus_file_name,
                                             nimble::GenesisMesh &mesh,
                                             nimble::ExodusOutput &out,
                                             ContactEntity *faces, std::size_t nfaces,
                                             ContactEntity *nodes, std::size_t nnodes);
+
     void WriteVisualizationData( double t, nimble::GenesisMesh &mesh,
                                  nimble::ExodusOutput &out,
         ContactEntity *faces, std::size_t nfaces,
         ContactEntity *nodes, std::size_t nnodes );
+
+    //--- Variables
+
+    int rank_ = 0;
+    int num_ranks_ = 1;
 
     bool contact_enabled_ = false;
     double penalty_parameter_;
@@ -262,22 +218,175 @@ class ContactInterface;
     nimble::GenesisMesh genesis_mesh_for_contact_visualization_;
     nimble::ExodusOutput exodus_output_for_contact_visualization_;
 
-#ifdef NIMBLE_HAVE_KOKKOS
-    nimble_kokkos::DeviceIntegerArrayView node_ids_d_ = nimble_kokkos::DeviceIntegerArrayView("contact node_ids_d", 1);
-    nimble_kokkos::DeviceScalarNodeView model_coord_d_ = nimble_kokkos::DeviceScalarNodeView("contact model_coord_d", 1);
-    nimble_kokkos::DeviceScalarNodeView coord_d_ = nimble_kokkos::DeviceScalarNodeView("contact coord_d", 1);
-    nimble_kokkos::DeviceScalarNodeView force_d_ = nimble_kokkos::DeviceScalarNodeView("contact force_d", 1);
-
-    nimble_kokkos::DeviceContactEntityArrayView contact_faces_d_ = nimble_kokkos::DeviceContactEntityArrayView("contact_faces_d", 1);
-    nimble_kokkos::DeviceContactEntityArrayView contact_nodes_d_ = nimble_kokkos::DeviceContactEntityArrayView("contact_nodes_d", 1);
-
-    // TODO remove this once enforcement is on device
-    nimble_kokkos::HostContactEntityArrayView contact_faces_h_ = nimble_kokkos::HostContactEntityArrayView("contact_faces_h", 1);
-    nimble_kokkos::HostContactEntityArrayView contact_nodes_h_ = nimble_kokkos::HostContactEntityArrayView("contact_nodes_h", 1);
-#endif
-
     std::shared_ptr<ContactInterface> contact_interface;
+
 };
+
+
+//-------------------------------------------
+//--- Implementation of template functions
+//-------------------------------------------
+
+
+template <typename ArgT>
+void ContactManager::CreateContactNodesAndFaces(std::vector< std::vector<int> > const & master_skin_faces,
+                                                std::vector<int> const & master_skin_entity_ids,
+                                                std::vector<int> const & slave_node_ids,
+                                                std::vector<int> const & slave_node_entity_ids,
+                                                std::map<int, double> const & slave_node_char_lens,
+                                                ArgT& contact_nodes,
+                                                ArgT& contact_faces) const {
+
+  int index = 0;
+
+  // convert master faces to trangular facets
+  for (unsigned int i_face=0 ; i_face < master_skin_faces.size() ; i_face++) {
+
+    auto face = master_skin_faces[i_face];
+
+    int num_nodes_in_face = static_cast<int>(face.size());
+    if (num_nodes_in_face != 4) {
+      throw std::logic_error("\nError in ContactManager::CreateContactNodesAndFaces(), invalid number of face nodes.\n");
+    }
+
+    // determine a characteristic length based on max edge length
+    double max_edge_length = std::numeric_limits<double>::lowest();
+    for (int i=0 ; i<num_nodes_in_face ; ++i) {
+      int node_id_1 = face[i];
+      int node_id_2 = face[0];
+      if (i+1 < num_nodes_in_face) {
+        node_id_2 = face[i+1];
+      }
+      double edge_length = sqrt( (coord_[3*node_id_2  ] - coord_[3*node_id_1  ])*(coord_[3*node_id_2  ] - coord_[3*node_id_1  ]) +
+                                 (coord_[3*node_id_2+1] - coord_[3*node_id_1+1])*(coord_[3*node_id_2+1] - coord_[3*node_id_1+1]) +
+                                 (coord_[3*node_id_2+2] - coord_[3*node_id_1+2])*(coord_[3*node_id_2+2] - coord_[3*node_id_1+2]) );
+      if (edge_length > max_edge_length) {
+        max_edge_length = edge_length;
+      }
+    }
+    double characteristic_length = max_edge_length;
+
+    // create a node at the barycenter of the face
+    double fictitious_node[3] = {0.0, 0.0, 0.0};
+    for (int i=0 ; i<num_nodes_in_face ; ++i) {
+      int node_id = face[i];
+      for (int j=0 ; j<3 ; j++) {
+        fictitious_node[j] += coord_[3*node_id+j];
+      }
+    }
+    for (int j=0 ; j<3 ; j++) {
+      fictitious_node[j] /= num_nodes_in_face;
+    }
+
+    // Create a map for transfering displacements and contact forces from the nodes on the
+    // triangle patch to the contact manager data structures.  There is a 1-to-1 transfer for the two real nodes,
+    // and for the fictitious node the mapping applies an equal fraction of the displacement/force
+    // at the fictitious node to each for four real nodes in the original mesh face
+    int node_ids_for_fictitious_node[4];
+    for (int i=0 ; i<4 ; i++){
+      node_ids_for_fictitious_node[i] = face[i];
+    }
+
+    double model_coord[9];
+    int node_id_1, node_id_2, entity_id;
+
+    // triangle node_0, node_1, fictitious_node
+    node_id_1 = face[0];
+    node_id_2 = face[1];
+    for (int i=0 ; i<3 ; ++i) {
+      model_coord[i] = coord_[3*node_id_1+i];
+      model_coord[3+i] = coord_[3*node_id_2+i];
+    }
+    model_coord[6] = fictitious_node[0];
+    model_coord[7] = fictitious_node[1];
+    model_coord[8] = fictitious_node[2];
+    entity_id = master_skin_entity_ids[i_face];
+    entity_id |= 0; // triangle ordinal
+    contact_faces[index++] = ContactEntity(ContactEntity::TRIANGLE,
+                                           entity_id,
+                                           model_coord,
+                                           characteristic_length,
+                                           node_id_1,
+                                           node_id_2,
+                                           node_ids_for_fictitious_node);
+
+    // triangle node_1, node_2, fictitious_node
+    node_id_1 = face[1];
+    node_id_2 = face[2];
+    for (int i=0 ; i<3 ; ++i) {
+      model_coord[i] = coord_[3*node_id_1+i];
+      model_coord[3+i] = coord_[3*node_id_2+i];
+    }
+    model_coord[6] = fictitious_node[0];
+    model_coord[7] = fictitious_node[1];
+    model_coord[8] = fictitious_node[2];
+    entity_id = master_skin_entity_ids[i_face];
+    entity_id |= 1; // triangle ordinal
+    contact_faces[index++] = ContactEntity(ContactEntity::TRIANGLE,
+                                           entity_id,
+                                           model_coord,
+                                           characteristic_length,
+                                           node_id_1,
+                                           node_id_2,
+                                           node_ids_for_fictitious_node);
+
+    // triangle node_2, node_3, fictitious_node
+    node_id_1 = face[2];
+    node_id_2 = face[3];
+    for (int i=0 ; i<3 ; ++i) {
+      model_coord[i] = coord_[3*node_id_1+i];
+      model_coord[3+i] = coord_[3*node_id_2+i];
+    }
+    model_coord[6] = fictitious_node[0];
+    model_coord[7] = fictitious_node[1];
+    model_coord[8] = fictitious_node[2];
+    entity_id = master_skin_entity_ids[i_face];
+    entity_id |= 2; // triangle ordinal
+    contact_faces[index++] = ContactEntity(ContactEntity::TRIANGLE,
+                                           entity_id,
+                                           model_coord,
+                                           characteristic_length,
+                                           node_id_1,
+                                           node_id_2,
+                                           node_ids_for_fictitious_node);
+
+    // triangle node_3, node_0, fictitious_node
+    node_id_1 = face[3];
+    node_id_2 = face[0];
+    for (int i=0 ; i<3 ; ++i) {
+      model_coord[i] = coord_[3*node_id_1+i];
+      model_coord[3+i] = coord_[3*node_id_2+i];
+    }
+    model_coord[6] = fictitious_node[0];
+    model_coord[7] = fictitious_node[1];
+    model_coord[8] = fictitious_node[2];
+    entity_id = master_skin_entity_ids[i_face];
+    entity_id |= 3; // triangle ordinal
+    contact_faces[index++] = ContactEntity(ContactEntity::TRIANGLE,
+                                           entity_id,
+                                           model_coord,
+                                           characteristic_length,
+                                           node_id_1,
+                                           node_id_2,
+                                           node_ids_for_fictitious_node);
+  }
+
+  // Slave node entities
+  for (unsigned int i_node=0 ; i_node < slave_node_ids.size() ; ++i_node) {
+    int node_id = slave_node_ids.at(i_node);
+    int entity_id = slave_node_entity_ids.at(i_node);
+    double characteristic_length = slave_node_char_lens.at(node_id);
+    double model_coord[3];
+    for (int i=0 ; i<3 ; ++i) {
+      model_coord[i] = coord_[3*node_id+i];
+    }
+    contact_nodes[i_node] = ContactEntity(ContactEntity::NODE,
+                                          entity_id,
+                                          model_coord,
+                                          characteristic_length,
+                                          node_id);
+  }
+}
 
 } // namespace nimble
 
