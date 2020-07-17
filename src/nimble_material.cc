@@ -133,22 +133,18 @@ namespace nimble {
 #endif
 
 #ifdef NIMBLE_HAVE_UQ
-  void ElasticMaterial::GetOffNominalStress(const std::vector<double> & params_this_sample,
-                                            const int & bulk_mod_idx,
-                                            const int & shear_mod_idx,
+  void ElasticMaterial::GetOffNominalStress(const double & bulk_mod,
+                                            const double & shear_mod,
                                             int num_pts,
                                             const double * const deformation_gradient_np1,
                                             double* stress_np1) {
-
-    double bulk_mod = (bulk_mod_idx == -1) ? bulk_modulus_ : params_this_sample[bulk_mod_idx];
-    double shear_mod = (shear_mod_idx == -1) ? shear_modulus_ : params_this_sample[shear_mod_idx];
 
     double* stress = stress_np1;
     const double * def_grad = deformation_gradient_np1;
     double strain[6];
     double trace_strain;
 
-    double two_mu = 2.0 * shear_modulus_;
+    double two_mu = 2.0 * shear_mod;
     double lambda = bulk_mod - 2.0*shear_mod/3.0;
 
     for (int pt = 0 ; pt < num_pts ; pt++, def_grad+=9, stress+=6){
@@ -318,15 +314,11 @@ namespace nimble {
   }
 
 #ifdef NIMBLE_HAVE_UQ
-  void NeohookeanMaterial::GetOffNominalStress(const std::vector<double> & params_this_sample,
-                                               const int & bulk_mod_idx,
-                                               const int & shear_mod_idx,
+  void NeohookeanMaterial::GetOffNominalStress(const double & bulk_mod,
+                                               const double & shear_mod,
                                                int num_pts,
                                                const double * const deformation_gradient_np1,
                                                double* stress_np1) {
-
-    double bulk_mod = (bulk_mod_idx == -1) ? bulk_modulus_ : params_this_sample[bulk_mod_idx];
-    double shear_mod = (shear_mod_idx == -1) ? shear_modulus_ : params_this_sample[shear_mod_idx];
 
     double xj,fac,pressure,bxx,byy,bzz,bxy,byz,bzx,trace;
     double sxx,syy,szz,sxy,syz,szx,syx,szy,sxz;

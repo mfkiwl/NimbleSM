@@ -164,11 +164,22 @@ int main(int argc, char *argv[]) {
     macroscale_data.SetUqModel(parser.UqModelString());
     //Allocate "Off-Nominal" displacements and forces at nodes
     int n_uq_samples = macroscale_data.GetUqModel().num_samples_;
-    int offnominal_displacement_ids[n_uq_samples], offnominal_internal_force_ids[n_uq_samples], offnominal_velocity_ids[n_uq_samples];
-    for(int nuq=0; nuq<n_uq_samples; nuq++){
+    int n_uq_exact_samples = macroscale.data.GetUqModel().num_exact_samples_;
+    assert(n_uq_exact_samples <= n_uq_samples); 
+    int offnominal_displacement_ids[n_uq_exact_samples], offnominal_internal_force_ids[n_uq_exact_samples], offnominal_velocity_ids[n_uq_exact_samples];
+    //Only exact samples perform Velocity-Verlet integration. Need velocity allocation only for these 
+    for(int nuq=0; nuq<n_uq_exact_samples; nuq++){
       offnominal_displacement_ids[nuq] = macroscale_data.AllocateNodeData(nimble::VECTOR, "off_nom_displacement_"+std::to_string(nuq), num_nodes);
       offnominal_velocity_ids[nuq] = macroscale_data.AllocateNodeData(nimble::VECTOR, "off_nom_velocity_"+std::to_string(nuq), num_nodes);
       offnominal_internal_force_ids[nuq] = macroscale_data.AllocateNodeData(nimble::VECTOR, "off_nom_internal_force_"+std::to_string(nuq), num_nodes);
+    }
+    //We could be using a different time-integration for approximate samples
+    //Not allocating velocity for these
+    int n_uq_approx_samples = n_uq_samples - n_uq_exact_samples; 
+    int offnominal_approx_displacement_ids[n_uq_approx_samples], offnominal_approx_internal_force_ids[n_uq_approx_samples];
+    for(int nuq=0; nuq<n_uq_approx_samples; nuq++){
+      offnominal_approx_displacement_ids[nuq] = macroscale_data.AllocateNodeData(nimble::VECTOR, "off_nom_approx_displacement_"+std::to_string(nuq), num_nodes);
+      offnominal_approx_internal_force_ids[nuq] = macroscale_data.AllocateNodeData(nimble::VECTOR, "off_nom_approx_internal_force_"+std::to_string(nuq), num_nodes);
     }
   }
 #endif
@@ -207,11 +218,6 @@ int main(int argc, char *argv[]) {
     }
     //Now sample the actual Uq parameters as parsed from strings
     uq_parameters.SampleParameters();
-    //Allocate displacement sensitvities, at each node
-    int displacement_sensitivity_ids[ uq_parameters.GetNumParams() ];
-    for(int np=0; np<uq_parameters.GetNumParams(); np++){
-      displacement_sensitivity_ids[np] = macroscale_data.AllocateNodeData(nimble::VECTOR, "disp_sensitivity_param_"+std::to_string(np), num_nodes);
-    }
   }
 #endif
 
@@ -368,18 +374,14 @@ int ExplicitTimeIntegrator(nimble::Parser & parser,
   std::vector<Viewify> bc_offnom_velocity_views(0);
   bool uq_enabled = parser.HasUq();
   if(uq_enabled) {
-    int n_uq_samples = uq_model.num_samples_;
-    for(int nuq=0; nuq<n_uq_samples; nuq++){
+    int n_uq_exact_samples = uq_model.num_exact_samples_;
+    for(int nuq=0; nuq<n_uq_exact_samples; nuq++){
       offnominal_displacements.push_back( macroscale_data.GetNodeData( macroscale_data.GetFieldId("off_nom_displacement_"+std::to_string(nuq) ) ) );
       offnominal_internal_forces.push_back( macroscale_data.GetNodeData( macroscale_data.GetFieldId("off_nom_internal_force_"+std::to_string(nuq) ) ) );
       offnominal_velocities.push_back( macroscale_data.GetNodeData( macroscale_data.GetFieldId("off_nom_velocity_"+std::to_string(nuq) ) ) );
     }
 
-    for(int np = 0; np < uq_parameters.GetNumParams(); np++) {
-      displacement_sensitivities.push_back(macroscale_data.GetNodeData(  macroscale_data.GetFieldId("disp_sensitivity_param_"+std::to_string(np) ) ) );
-    }
-
-    for(int nuq=0; nuq<n_uq_samples; nuq++){
+    for(int nuq=0; nuq<n_uq_exact_samples; nuq++){
        bc_offnom_velocity_views.push_back( Viewify(offnominal_velocities[nuq],3) );
     }
   }
@@ -501,7 +503,7 @@ int ExplicitTimeIntegrator(nimble::Parser & parser,
     }
 
 #ifdef NIMBLE_HAVE_UQ
-   for(int nuq=0; nuq<uq_model.num_samples_; nuq++){
+   for(int nuq=0; nuq<uq_model.num_exact_samples_; nuq++){
      double * int_force_this_sample = offnominal_internal_forces[nuq];
      double * velocity_this_sample = offnominal_velocities[nuq];
      for (int i=0 ; i<num_unknowns ; ++i) {
@@ -528,7 +530,7 @@ int ExplicitTimeIntegrator(nimble::Parser & parser,
     }
 
 #ifdef NIMBLE_HAVE_UQ
-   for(int nuq=0; nuq<uq_model.num_samples_; nuq++){
+   for(int nuq=0; nuq<uq_model.num_exact_samples_; nuq++){
      double * disp_this_sample = offnominal_displacements[nuq];
      double * velocity_this_sample = offnominal_velocities[nuq];
      for (int i=0 ; i<num_unknowns ; ++i) {
@@ -537,35 +539,12 @@ int ExplicitTimeIntegrator(nimble::Parser & parser,
    }
 #endif
 
-#ifdef NIMBLE_HAVE_UQ
-    if(uq_enabled) {
-      // HACK specific to 1D & linear in parameter
-      // Compute displacement sensitivites, i.e. \partial(U)/\partial(\lambda)
-      // Loop over parameters and do one-by-one
-      for(int np=0; np<uq_parameters.GetNumParams(); np++){
-        int left_sample = uq_parameters.GetLeftAdjSampleForParam(np);
-        int right_sample = uq_parameters.GetRightAdjSampleForParam(np);
-
-        int left_off_nom_disp_field_id = macroscale_data.GetFieldId( "off_nom_displacement_"+std::to_string(left_sample) );
-        int right_off_nom_disp_field_id = macroscale_data.GetFieldId("off_nom_displacement_"+std::to_string(right_sample));
-
-        double* left_off_nom_disp = macroscale_data.GetNodeData(left_off_nom_disp_field_id);
-        double* right_off_nom_disp= macroscale_data.GetNodeData(right_off_nom_disp_field_id);
-
-        if(left_sample != right_sample) { // protect against nsamples ==1
-          uq_parameters.ComputeDisplacementSensitivity(np, num_unknowns, displacement, left_off_nom_disp, right_off_nom_disp,
-                                                       displacement_sensitivities[np]);
-        }
-      }
-    }
-#endif
-
     // Evaluate the internal force
     for (int i=0 ; i<num_unknowns ; ++i) {
       internal_force[i] = 0.0;
     }
 #ifdef NIMBLE_HAVE_UQ
-    for(int nuq=0; nuq<uq_model.num_samples_; nuq++){
+    for(int nuq=0; nuq<uq_model.num_exact_samples_; nuq++){
       double * int_force_this_sample = offnominal_internal_forces[nuq];
       for (int i=0 ; i<num_unknowns ; ++i) { int_force_this_sample[i] = 0.0;}
     }
@@ -578,6 +557,34 @@ int ExplicitTimeIntegrator(nimble::Parser & parser,
       nimble::Block& block = block_it->second;
       std::vector<double> const & elem_data_n = macroscale_data.GetElementDataOld(block_id);
       std::vector<double> & elem_data_np1 = macroscale_data.GetElementDataNew(block_id);
+#ifdef NIMBLE_HAVE_UQ
+      for(int ntraj=0; ntraj <= uq_model.num_exact_samples_; ntraj++){
+        //0th traj is the nominal, subsequent ones are off_nominal sample trajectories
+        bool is_off_nominal = (ntraj==0);
+        double * disp_ptr = (is_off_nominal) ? offnominal_displacements[ntraj-1]  : displacement;
+        double * vel_ptr =  (is_off_nominal) ? offnominal_velocities[ntraj-1] : velocity;
+        double * internal_force_ptr = (is_off_nominal) ? offnominal_internal_forces[ntraj-1] : internal_force;
+        std::vector<double> const & params_this_sample = uq_params.GetParamsForSample(ntraj-1);
+        block.ComputeInternalForce(reference_coordinate,
+                                   disp_ptr,
+                                   vel_ptr,
+                                   rve_macroscale_deformation_gradient.data(),
+                                   internal_force_ptr,
+                                   time_previous,
+                                   time_current,
+                                   num_elem_in_block,
+                                   elem_conn,
+                                   elem_global_ids.data(),
+                                   elem_data_labels.at(block_id),
+                                   elem_data_n,
+                                   elem_data_np1,
+                                   data_manager,
+                                   is_output_step,
+                                   is_off_nominal,
+                                   params_this_sample
+                                   );
+      }
+#else
       block.ComputeInternalForce(reference_coordinate,
                                  displacement,
                                  velocity,
@@ -593,15 +600,8 @@ int ExplicitTimeIntegrator(nimble::Parser & parser,
                                  elem_data_np1,
                                  data_manager,
                                  is_output_step
-#ifdef NIMBLE_HAVE_UQ
-                                 ,uq_enabled
-                                 ,&uq_parameters
-                                 ,uq_model.num_samples_
-                                 ,offnominal_displacements
-                                 ,offnominal_internal_forces
-                                 ,displacement_sensitivities
-#endif
                                  );
+#endif
     }
 
     // Evaluate the contact force
@@ -621,7 +621,7 @@ int ExplicitTimeIntegrator(nimble::Parser & parser,
       velocity[i] += half_delta_time * acceleration[i];
     }
 #ifdef NIMBLE_HAVE_UQ
-   for(int nuq=0; nuq<uq_model.num_samples_; nuq++){
+   for(int nuq=0; nuq<uq_model.num_exact_samples_; nuq++){
      double * int_force_this_sample = offnominal_internal_forces[nuq];
      double * velocity_this_sample = offnominal_velocities[nuq];
      for (int i=0 ; i<num_unknowns ; ++i) {
