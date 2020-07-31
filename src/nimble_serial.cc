@@ -162,9 +162,11 @@ int main(int argc, char *argv[]) {
   bool uq_enabled = parser.HasUq();
   if(uq_enabled) {
     macroscale_data.SetUqModel(parser.UqModelString());
+    //Get a reference to the UqModel object for use in the rest of the code
+    UqModel uq_model = macroscale_data.GetUqModel();
     //Allocate "Off-Nominal" displacements and forces at nodes
-    int n_uq_samples = macroscale_data.GetUqModel().num_samples_;
-    int n_uq_exact_samples = macroscale.data.GetUqModel().num_exact_samples_;
+    int n_uq_samples = uq_model.num_samples_;
+    int n_uq_exact_samples = uq_model.num_exact_samples_;
     assert(n_uq_exact_samples <= n_uq_samples); 
     int offnominal_displacement_ids[n_uq_exact_samples], offnominal_internal_force_ids[n_uq_exact_samples], offnominal_velocity_ids[n_uq_exact_samples];
     //Only exact samples perform Velocity-Verlet integration. Need velocity allocation only for these 
@@ -201,7 +203,7 @@ int main(int argc, char *argv[]) {
   }
 
 #ifdef NIMBLE_HAVE_UQ
-  nimble::UqParameters uq_parameters( macroscale_data.GetUqModel() );
+  nimble::UqParameters uq_parameters( uq_model );
   if(uq_enabled) {
     //Initialize Uq Parameters
     
@@ -279,7 +281,7 @@ int main(int argc, char *argv[]) {
   if (time_integration_scheme == "explicit") {
     status = ExplicitTimeIntegrator(parser, mesh, data_manager, bc, exodus_output
 #ifdef NIMBLE_HAVE_UQ
-                                   ,macroscale_data.GetUqModel()
+                                   ,uq_model
                                    ,uq_parameters
 #endif
                                    );
@@ -560,7 +562,7 @@ int ExplicitTimeIntegrator(nimble::Parser & parser,
 #ifdef NIMBLE_HAVE_UQ
       for(int ntraj=0; ntraj <= uq_model.num_exact_samples_; ntraj++){
         //0th traj is the nominal, subsequent ones are off_nominal sample trajectories
-        bool is_off_nominal = (ntraj==0);
+        bool is_off_nominal = (ntraj!=0);
         double * disp_ptr = (is_off_nominal) ? offnominal_displacements[ntraj-1]  : displacement;
         double * vel_ptr =  (is_off_nominal) ? offnominal_velocities[ntraj-1] : velocity;
         double * internal_force_ptr = (is_off_nominal) ? offnominal_internal_forces[ntraj-1] : internal_force;
