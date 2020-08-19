@@ -5,6 +5,7 @@ on:
   push:
     branches:  
       - master
+      - feature/merge-ci-action
   pull_request:
 
   workflow_dispatch:
@@ -12,12 +13,9 @@ on:
 jobs:
 
   build:
-
     runs-on: ubuntu-latest
-
     env:
       CMAKE_BUILD_TYPE: release
-
     steps:
     - uses: actions/checkout@v1
     - name: Install Dependencies
@@ -26,20 +24,26 @@ jobs:
            sudo apt-get update -y -qq
            sudo apt-get install -y libblas-dev liblapack-dev
            sudo apt-get install -y libmetis-dev
+    - name: Install MPI
+      run: |
            sudo apt-get install -y openmpi-bin libopenmpi-dev
+    - name: Install CDF & HDF5
+      run: |
            sudo apt-get install -y netcdf-bin libnetcdf-dev
            sudo apt-get install -y libhdf5-serial-dev libhdf5-mpich-dev
+    - name: Install Exodus
+      run: |
            sudo add-apt-repository ppa:nschloe/seacas-nightly
            sudo apt-get update -y -qq
            sudo apt-get install -y seacas-bin libseacas-dev
-    - name: configure
+    - name: configure NimbleSM
       run: |
            mkdir build && cd build
            export ACCESS=`pwd`
            cmake -DCMAKE_CXX_FLAGS="-Werror" -DUSE_PURE_MPI=ON -Dexodus_INCLUDE_DIR="/usr/include" -Dexodus_LIBRARY="/usr/lib/x86_64-linux-gnu/libexodus.so" ..
-    - name: build
+    - name: build NimbleSM
       run: cmake --build build
-    - name: test
+    - name: test_nimble_sm
       run: |
            cd build
            export PATH="/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin:${PATH}"
