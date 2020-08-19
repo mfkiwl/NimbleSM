@@ -18,11 +18,16 @@ jobs:
       CMAKE_BUILD_TYPE: release
     steps:
     - uses: actions/checkout@v1
-    - name: Install Dependencies
+    - name: Update apt-get
       shell: bash
       run: |
+           sudo add-apt-repository ppa:nschloe/seacas-nightly
            sudo apt-get update -y -qq
+    - name: Install BLAS & LAPACK
+      run: |
            sudo apt-get install -y libblas-dev liblapack-dev
+    - name: Install Metis
+      run: |
            sudo apt-get install -y libmetis-dev
     - name: Install MPI
       run: |
@@ -33,8 +38,6 @@ jobs:
            sudo apt-get install -y libhdf5-serial-dev libhdf5-mpich-dev
     - name: Install Exodus
       run: |
-           sudo add-apt-repository ppa:nschloe/seacas-nightly
-           sudo apt-get update -y -qq
            sudo apt-get install -y seacas-bin libseacas-dev
     - name: configure NimbleSM
       run: |
