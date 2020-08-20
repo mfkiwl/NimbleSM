@@ -67,8 +67,8 @@ jobs:
         export ACCESS=`pwd`
         mkdir build && cd build
         cmake -DCMAKE_BUILD_TYPE=Release \
-              -DCMAKE_CXX_FLAGS="-Werror" 
-              -DHAVE_TRILINOS=ON 
+              -DCMAKE_CXX_FLAGS="-Werror" \
+              -DHAVE_TRILINOS=ON \
               -DUSE_PURE_MPI=ON \
               ..
     - name: Build NimbleSM
