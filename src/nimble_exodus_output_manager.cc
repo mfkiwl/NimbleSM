@@ -41,10 +41,11 @@
 //@HEADER
 */
 
+#include <sstream>
+
 #include "nimble_exodus_output_manager.h"
 #include "nimble_utils.h"
-#include <sstream>
-#include <nimble_kokkos_data_manager.h>
+#include "nimble_kokkos_data_manager.h"
 
 #ifndef NIMBLE_HAVE_DARMA
   #include <vector>
@@ -65,44 +66,44 @@ namespace nimble_kokkos {
 
     std::vector<std::string> scalar_node_data_labels = model_data.GetScalarNodeDataLabels();
     for (auto const & requested_label : requested_labels) {
-      for (auto& node_label : scalar_node_data_labels) {
-        if (requested_label == node_label) {
-          int field_id = model_data.GetFieldId(node_label);
-          int num_nodes = model_data.GetHostScalarNodeData(field_id).extent(0);
-          node_data_labels_.push_back(node_label);
-          node_data_field_ids_.push_back(field_id);
-          node_data_types_.push_back(FieldType::HostScalarNode);
-          node_data_components_.push_back(0);
-          node_data_.push_back(std::vector<double>(num_nodes, 0.0));
-        }
+      for (auto const & scalar_label : scalar_node_data_labels) {
+        if (scalar_label != requested_label)
+          continue;
+        auto fieldID = model_data.MapToFieldIndex(requested_label);
+        int num_nodes = model_data.GetHostScalarNodeData(fieldID).extent(0);
+        node_data_labels_.push_back(requested_label);
+        node_data_field_ids_.push_back(fieldID);
+        node_data_types_.push_back(FieldType::HostScalarNode);
+        node_data_components_.push_back(0);
+        node_data_.emplace_back(num_nodes, 0.0);
       }
     }
 
     std::vector<std::string> vector_node_data_labels = model_data.GetVectorNodeDataLabels();
     for (auto const & requested_label : requested_labels) {
-      for (auto& node_label : vector_node_data_labels) {
-        if (requested_label == node_label) {
-          int field_id = model_data.GetFieldId(node_label);
-          int num_nodes = model_data.GetHostVectorNodeData(field_id).extent(0);
-          // x component
-          node_data_labels_.push_back(node_label + "_x");
-          node_data_field_ids_.push_back(field_id);
-          node_data_types_.push_back(FieldType::HostVectorNode);
-          node_data_components_.push_back(K_X);
-          node_data_.push_back(std::vector<double>(num_nodes, 0.0));
-          // y component
-          node_data_labels_.push_back(node_label + "_y");
-          node_data_field_ids_.push_back(field_id);
-          node_data_types_.push_back(FieldType::HostVectorNode);
-          node_data_components_.push_back(K_Y);
-          node_data_.push_back(std::vector<double>(num_nodes, 0.0));
-          // z component
-          node_data_labels_.push_back(node_label + "_z");
-          node_data_field_ids_.push_back(field_id);
-          node_data_types_.push_back(FieldType::HostVectorNode);
-          node_data_components_.push_back(K_Z);
-          node_data_.push_back(std::vector<double>(num_nodes, 0.0));
-        }
+      for (auto const & vector_label : vector_node_data_labels) {
+        if (vector_label != requested_label)
+          continue;
+        auto fieldID = model_data.MapToFieldIndex(requested_label);
+        int num_nodes = model_data.GetHostVectorNodeData(fieldID).extent(0);
+        // x component
+        node_data_labels_.push_back(requested_label + "_x");
+        node_data_field_ids_.push_back(fieldID);
+        node_data_types_.push_back(FieldType::HostVectorNode);
+        node_data_components_.push_back(K_X);
+        node_data_.emplace_back(num_nodes, 0.0);
+        // y component
+        node_data_labels_.push_back(requested_label + "_y");
+        node_data_field_ids_.push_back(fieldID);
+        node_data_types_.push_back(FieldType::HostVectorNode);
+        node_data_components_.push_back(K_Y);
+        node_data_.emplace_back(num_nodes, 0.0);
+        // z component
+        node_data_labels_.push_back(requested_label + "_z");
+        node_data_field_ids_.push_back(fieldID);
+        node_data_types_.push_back(FieldType::HostVectorNode);
+        node_data_components_.push_back(K_Z);
+        node_data_.emplace_back(num_nodes, 0.0);
       }
     }
 
@@ -119,8 +120,7 @@ namespace nimble_kokkos {
       full_tensor_field_ids_requiring_volume_average_[block_id] = std::vector<int>();
     }
 
-    for (unsigned int i_block=0 ; i_block<block_ids.size() ; ++i_block) {
-      int block_id = block_ids[i_block];
+    for (int block_id : block_ids) {
 
       // volume is special, it is not tied to integration point data
       for (auto const & requested_label : requested_labels) {
@@ -151,65 +151,66 @@ namespace nimble_kokkos {
             require_volume_average = false;
             integration_point_index = atoi(requested_label.substr(4,2).c_str()) - 1;
           }
-          if (field_label == ipt_label) {
-            int iptdata_field_id = model_data.GetFieldId(ipt_label);
-            int edata_field_id = iptdata_field_id;
-            if (require_volume_average) {
-              sym_tensor_field_ids_requiring_volume_average_[block_id].push_back(iptdata_field_id);
-            }
-            int num_elem = model_data.GetDeviceSymTensorIntegrationPointData(block_id, iptdata_field_id, nimble::STEP_NP1).extent(0);
-            if (single_integration_point) {
-              edata_field_id = model_data.AllocateElementData(block_id, nimble::SYMMETRIC_TENSOR, requested_label, num_elem);
-            }
-            // xx component
-            elem_data_labels_[block_id].push_back(requested_label + "_xx");
-            elem_data_iptdata_field_ids_[block_id].push_back(iptdata_field_id);
-            elem_data_edata_field_ids_[block_id].push_back(edata_field_id);
-            elem_data_types_[block_id].push_back(FieldType::HostSymTensorElem);
-            elem_data_components_[block_id].push_back(K_S_XX);
-            elem_data_integration_point_index_[block_id].push_back(integration_point_index);
-            elem_data_[block_id].push_back(std::vector<double>(num_elem, 0.0));
-            // yy component
-            elem_data_labels_[block_id].push_back(requested_label + "_yy");
-            elem_data_iptdata_field_ids_[block_id].push_back(iptdata_field_id);
-            elem_data_edata_field_ids_[block_id].push_back(edata_field_id);
-            elem_data_types_[block_id].push_back(FieldType::HostSymTensorElem);
-            elem_data_components_[block_id].push_back(K_S_YY);
-            elem_data_integration_point_index_[block_id].push_back(integration_point_index);
-            elem_data_[block_id].push_back(std::vector<double>(num_elem, 0.0));
-            // zz component
-            elem_data_labels_[block_id].push_back(requested_label + "_zz");
-            elem_data_iptdata_field_ids_[block_id].push_back(iptdata_field_id);
-            elem_data_edata_field_ids_[block_id].push_back(edata_field_id);
-            elem_data_types_[block_id].push_back(FieldType::HostSymTensorElem);
-            elem_data_components_[block_id].push_back(K_S_ZZ);
-            elem_data_integration_point_index_[block_id].push_back(integration_point_index);
-            elem_data_[block_id].push_back(std::vector<double>(num_elem, 0.0));
-            //  xy component
-            elem_data_labels_[block_id].push_back(requested_label + "_xy");
-            elem_data_iptdata_field_ids_[block_id].push_back(iptdata_field_id);
-            elem_data_edata_field_ids_[block_id].push_back(edata_field_id);
-            elem_data_types_[block_id].push_back(FieldType::HostSymTensorElem);
-            elem_data_components_[block_id].push_back(K_S_XY);
-            elem_data_integration_point_index_[block_id].push_back(integration_point_index);
-            elem_data_[block_id].push_back(std::vector<double>(num_elem, 0.0));
-            // yz component
-            elem_data_labels_[block_id].push_back(requested_label + "_yz");
-            elem_data_iptdata_field_ids_[block_id].push_back(iptdata_field_id);
-            elem_data_edata_field_ids_[block_id].push_back(edata_field_id);
-            elem_data_types_[block_id].push_back(FieldType::HostSymTensorElem);
-            elem_data_components_[block_id].push_back(K_S_YZ);
-            elem_data_integration_point_index_[block_id].push_back(integration_point_index);
-            elem_data_[block_id].push_back(std::vector<double>(num_elem, 0.0));
-            // zx component
-            elem_data_labels_[block_id].push_back(requested_label + "_zx");
-            elem_data_iptdata_field_ids_[block_id].push_back(iptdata_field_id);
-            elem_data_edata_field_ids_[block_id].push_back(edata_field_id);
-            elem_data_types_[block_id].push_back(FieldType::HostSymTensorElem);
-            elem_data_components_[block_id].push_back(K_S_ZX);
-            elem_data_integration_point_index_[block_id].push_back(integration_point_index);
-            elem_data_[block_id].push_back(std::vector<double>(num_elem, 0.0));
+          if (field_label != ipt_label)
+            continue;
+          //
+          auto iptdata_field_id = model_data.GetFieldId(ipt_label);
+          auto edata_field_id = iptdata_field_id;
+          if (require_volume_average) {
+            sym_tensor_field_ids_requiring_volume_average_[block_id].push_back(iptdata_field_id);
           }
+          int num_elem = model_data.GetDeviceSymTensorIntegrationPointData(block_id, iptdata_field_id, nimble::STEP_NP1).extent(0);
+          if (single_integration_point) {
+            edata_field_id = model_data.AllocateElementData(block_id, nimble::SYMMETRIC_TENSOR, requested_label, num_elem);
+          }
+          // xx component
+          elem_data_labels_[block_id].push_back(requested_label + "_xx");
+          elem_data_iptdata_field_ids_[block_id].push_back(iptdata_field_id);
+          elem_data_edata_field_ids_[block_id].push_back(edata_field_id);
+          elem_data_types_[block_id].push_back(FieldType::HostSymTensorElem);
+          elem_data_components_[block_id].push_back(K_S_XX);
+          elem_data_integration_point_index_[block_id].push_back(integration_point_index);
+          elem_data_[block_id].push_back(std::vector<double>(num_elem, 0.0));
+          // yy component
+          elem_data_labels_[block_id].push_back(requested_label + "_yy");
+          elem_data_iptdata_field_ids_[block_id].push_back(iptdata_field_id);
+          elem_data_edata_field_ids_[block_id].push_back(edata_field_id);
+          elem_data_types_[block_id].push_back(FieldType::HostSymTensorElem);
+          elem_data_components_[block_id].push_back(K_S_YY);
+          elem_data_integration_point_index_[block_id].push_back(integration_point_index);
+          elem_data_[block_id].push_back(std::vector<double>(num_elem, 0.0));
+          // zz component
+          elem_data_labels_[block_id].push_back(requested_label + "_zz");
+          elem_data_iptdata_field_ids_[block_id].push_back(iptdata_field_id);
+          elem_data_edata_field_ids_[block_id].push_back(edata_field_id);
+          elem_data_types_[block_id].push_back(FieldType::HostSymTensorElem);
+          elem_data_components_[block_id].push_back(K_S_ZZ);
+          elem_data_integration_point_index_[block_id].push_back(integration_point_index);
+          elem_data_[block_id].push_back(std::vector<double>(num_elem, 0.0));
+          //  xy component
+          elem_data_labels_[block_id].push_back(requested_label + "_xy");
+          elem_data_iptdata_field_ids_[block_id].push_back(iptdata_field_id);
+          elem_data_edata_field_ids_[block_id].push_back(edata_field_id);
+          elem_data_types_[block_id].push_back(FieldType::HostSymTensorElem);
+          elem_data_components_[block_id].push_back(K_S_XY);
+          elem_data_integration_point_index_[block_id].push_back(integration_point_index);
+          elem_data_[block_id].push_back(std::vector<double>(num_elem, 0.0));
+          // yz component
+          elem_data_labels_[block_id].push_back(requested_label + "_yz");
+          elem_data_iptdata_field_ids_[block_id].push_back(iptdata_field_id);
+          elem_data_edata_field_ids_[block_id].push_back(edata_field_id);
+          elem_data_types_[block_id].push_back(FieldType::HostSymTensorElem);
+          elem_data_components_[block_id].push_back(K_S_YZ);
+          elem_data_integration_point_index_[block_id].push_back(integration_point_index);
+          elem_data_[block_id].push_back(std::vector<double>(num_elem, 0.0));
+          // zx component
+          elem_data_labels_[block_id].push_back(requested_label + "_zx");
+          elem_data_iptdata_field_ids_[block_id].push_back(iptdata_field_id);
+          elem_data_edata_field_ids_[block_id].push_back(edata_field_id);
+          elem_data_types_[block_id].push_back(FieldType::HostSymTensorElem);
+          elem_data_components_[block_id].push_back(K_S_ZX);
+          elem_data_integration_point_index_[block_id].push_back(integration_point_index);
+          elem_data_[block_id].push_back(std::vector<double>(num_elem, 0.0));
         }
       }
 
@@ -227,89 +228,89 @@ namespace nimble_kokkos {
           integration_point_index = atoi(requested_label.substr(4,2).c_str()) - 1;
         }
         for (auto& ipt_label : full_tensor_integration_point_data_labels) {
-          if (field_label == ipt_label) {
-            int iptdata_field_id = model_data.GetFieldId(ipt_label);
-            int edata_field_id = iptdata_field_id;
-            if (require_volume_average) {
-              full_tensor_field_ids_requiring_volume_average_[block_id].push_back(iptdata_field_id);
-            }
-            int num_elem = model_data.GetDeviceFullTensorIntegrationPointData(block_id, iptdata_field_id, nimble::STEP_NP1).extent(0);
-            if (single_integration_point) {
-              edata_field_id = model_data.AllocateElementData(block_id, nimble::FULL_TENSOR, requested_label, num_elem);
-            }
-            // xx component
-            elem_data_labels_[block_id].push_back(requested_label + "_xx");
-            elem_data_iptdata_field_ids_[block_id].push_back(iptdata_field_id);
-            elem_data_edata_field_ids_[block_id].push_back(edata_field_id);
-            elem_data_types_[block_id].push_back(FieldType::HostFullTensorElem);
-            elem_data_components_[block_id].push_back(K_F_XX);
-            elem_data_integration_point_index_[block_id].push_back(integration_point_index);
-            elem_data_[block_id].push_back(std::vector<double>(num_elem, 0.0));
-            // yy component
-            elem_data_labels_[block_id].push_back(requested_label + "_yy");
-            elem_data_iptdata_field_ids_[block_id].push_back(iptdata_field_id);
-            elem_data_edata_field_ids_[block_id].push_back(edata_field_id);
-            elem_data_types_[block_id].push_back(FieldType::HostFullTensorElem);
-            elem_data_components_[block_id].push_back(K_F_YY);
-            elem_data_integration_point_index_[block_id].push_back(integration_point_index);
-            elem_data_[block_id].push_back(std::vector<double>(num_elem, 0.0));
-            // zz component
-            elem_data_labels_[block_id].push_back(requested_label + "_zz");
-            elem_data_iptdata_field_ids_[block_id].push_back(iptdata_field_id);
-            elem_data_edata_field_ids_[block_id].push_back(edata_field_id);
-            elem_data_types_[block_id].push_back(FieldType::HostFullTensorElem);
-            elem_data_components_[block_id].push_back(K_F_ZZ);
-            elem_data_integration_point_index_[block_id].push_back(integration_point_index);
-            elem_data_[block_id].push_back(std::vector<double>(num_elem, 0.0));
-            //  xy component
-            elem_data_labels_[block_id].push_back(requested_label + "_xy");
-            elem_data_iptdata_field_ids_[block_id].push_back(iptdata_field_id);
-            elem_data_edata_field_ids_[block_id].push_back(edata_field_id);
-            elem_data_types_[block_id].push_back(FieldType::HostFullTensorElem);
-            elem_data_components_[block_id].push_back(K_F_XY);
-            elem_data_integration_point_index_[block_id].push_back(integration_point_index);
-            elem_data_[block_id].push_back(std::vector<double>(num_elem, 0.0));
-            // yz component
-            elem_data_labels_[block_id].push_back(requested_label + "_yz");
-            elem_data_iptdata_field_ids_[block_id].push_back(iptdata_field_id);
-            elem_data_edata_field_ids_[block_id].push_back(edata_field_id);
-            elem_data_types_[block_id].push_back(FieldType::HostFullTensorElem);
-            elem_data_components_[block_id].push_back(K_F_YZ);
-            elem_data_integration_point_index_[block_id].push_back(integration_point_index);
-            elem_data_[block_id].push_back(std::vector<double>(num_elem, 0.0));
-            // zx component
-            elem_data_labels_[block_id].push_back(requested_label + "_zx");
-            elem_data_iptdata_field_ids_[block_id].push_back(iptdata_field_id);
-            elem_data_edata_field_ids_[block_id].push_back(edata_field_id);
-            elem_data_types_[block_id].push_back(FieldType::HostFullTensorElem);
-            elem_data_components_[block_id].push_back(K_F_ZX);
-            elem_data_integration_point_index_[block_id].push_back(integration_point_index);
-            elem_data_[block_id].push_back(std::vector<double>(num_elem, 0.0));
-            // yx component
-            elem_data_labels_[block_id].push_back(requested_label + "_yx");
-            elem_data_iptdata_field_ids_[block_id].push_back(iptdata_field_id);
-            elem_data_edata_field_ids_[block_id].push_back(edata_field_id);
-            elem_data_types_[block_id].push_back(FieldType::HostFullTensorElem);
-            elem_data_components_[block_id].push_back(K_F_YX);
-            elem_data_integration_point_index_[block_id].push_back(integration_point_index);
-            elem_data_[block_id].push_back(std::vector<double>(num_elem, 0.0));
-            // zy component
-            elem_data_labels_[block_id].push_back(requested_label + "_zy");
-            elem_data_iptdata_field_ids_[block_id].push_back(iptdata_field_id);
-            elem_data_edata_field_ids_[block_id].push_back(edata_field_id);
-            elem_data_types_[block_id].push_back(FieldType::HostFullTensorElem);
-            elem_data_components_[block_id].push_back(K_F_ZY);
-            elem_data_integration_point_index_[block_id].push_back(integration_point_index);
-            elem_data_[block_id].push_back(std::vector<double>(num_elem, 0.0));
-            // xz component
-            elem_data_labels_[block_id].push_back(requested_label + "_xz");
-            elem_data_iptdata_field_ids_[block_id].push_back(iptdata_field_id);
-            elem_data_edata_field_ids_[block_id].push_back(edata_field_id);
-            elem_data_types_[block_id].push_back(FieldType::HostFullTensorElem);
-            elem_data_components_[block_id].push_back(K_F_XZ);
-            elem_data_integration_point_index_[block_id].push_back(integration_point_index);
-            elem_data_[block_id].push_back(std::vector<double>(num_elem, 0.0));
+          if (field_label != ipt_label)
+            continue;
+          auto iptdata_field_id = model_data.MapToFieldIndex(ipt_label);
+          auto edata_field_id = iptdata_field_id;
+          if (require_volume_average) {
+            full_tensor_field_ids_requiring_volume_average_[block_id].push_back(iptdata_field_id);
           }
+          int num_elem = model_data.GetDeviceFullTensorIntegrationPointData(block_id, iptdata_field_id, nimble::STEP_NP1).extent(0);
+          if (single_integration_point) {
+            edata_field_id = model_data.AllocateElementData(block_id, nimble::FULL_TENSOR, requested_label, num_elem);
+          }
+          // xx component
+          elem_data_labels_[block_id].push_back(requested_label + "_xx");
+          elem_data_iptdata_field_ids_[block_id].push_back(iptdata_field_id);
+          elem_data_edata_field_ids_[block_id].push_back(edata_field_id);
+          elem_data_types_[block_id].push_back(FieldType::HostFullTensorElem);
+          elem_data_components_[block_id].push_back(K_F_XX);
+          elem_data_integration_point_index_[block_id].push_back(integration_point_index);
+          elem_data_[block_id].push_back(std::vector<double>(num_elem, 0.0));
+          // yy component
+          elem_data_labels_[block_id].push_back(requested_label + "_yy");
+          elem_data_iptdata_field_ids_[block_id].push_back(iptdata_field_id);
+          elem_data_edata_field_ids_[block_id].push_back(edata_field_id);
+          elem_data_types_[block_id].push_back(FieldType::HostFullTensorElem);
+          elem_data_components_[block_id].push_back(K_F_YY);
+          elem_data_integration_point_index_[block_id].push_back(integration_point_index);
+          elem_data_[block_id].push_back(std::vector<double>(num_elem, 0.0));
+          // zz component
+          elem_data_labels_[block_id].push_back(requested_label + "_zz");
+          elem_data_iptdata_field_ids_[block_id].push_back(iptdata_field_id);
+          elem_data_edata_field_ids_[block_id].push_back(edata_field_id);
+          elem_data_types_[block_id].push_back(FieldType::HostFullTensorElem);
+          elem_data_components_[block_id].push_back(K_F_ZZ);
+          elem_data_integration_point_index_[block_id].push_back(integration_point_index);
+          elem_data_[block_id].push_back(std::vector<double>(num_elem, 0.0));
+          //  xy component
+          elem_data_labels_[block_id].push_back(requested_label + "_xy");
+          elem_data_iptdata_field_ids_[block_id].push_back(iptdata_field_id);
+          elem_data_edata_field_ids_[block_id].push_back(edata_field_id);
+          elem_data_types_[block_id].push_back(FieldType::HostFullTensorElem);
+          elem_data_components_[block_id].push_back(K_F_XY);
+          elem_data_integration_point_index_[block_id].push_back(integration_point_index);
+          elem_data_[block_id].push_back(std::vector<double>(num_elem, 0.0));
+          // yz component
+          elem_data_labels_[block_id].push_back(requested_label + "_yz");
+          elem_data_iptdata_field_ids_[block_id].push_back(iptdata_field_id);
+          elem_data_edata_field_ids_[block_id].push_back(edata_field_id);
+          elem_data_types_[block_id].push_back(FieldType::HostFullTensorElem);
+          elem_data_components_[block_id].push_back(K_F_YZ);
+          elem_data_integration_point_index_[block_id].push_back(integration_point_index);
+          elem_data_[block_id].push_back(std::vector<double>(num_elem, 0.0));
+          // zx component
+          elem_data_labels_[block_id].push_back(requested_label + "_zx");
+          elem_data_iptdata_field_ids_[block_id].push_back(iptdata_field_id);
+          elem_data_edata_field_ids_[block_id].push_back(edata_field_id);
+          elem_data_types_[block_id].push_back(FieldType::HostFullTensorElem);
+          elem_data_components_[block_id].push_back(K_F_ZX);
+          elem_data_integration_point_index_[block_id].push_back(integration_point_index);
+          elem_data_[block_id].push_back(std::vector<double>(num_elem, 0.0));
+          // yx component
+          elem_data_labels_[block_id].push_back(requested_label + "_yx");
+          elem_data_iptdata_field_ids_[block_id].push_back(iptdata_field_id);
+          elem_data_edata_field_ids_[block_id].push_back(edata_field_id);
+          elem_data_types_[block_id].push_back(FieldType::HostFullTensorElem);
+          elem_data_components_[block_id].push_back(K_F_YX);
+          elem_data_integration_point_index_[block_id].push_back(integration_point_index);
+          elem_data_[block_id].push_back(std::vector<double>(num_elem, 0.0));
+          // zy component
+          elem_data_labels_[block_id].push_back(requested_label + "_zy");
+          elem_data_iptdata_field_ids_[block_id].push_back(iptdata_field_id);
+          elem_data_edata_field_ids_[block_id].push_back(edata_field_id);
+          elem_data_types_[block_id].push_back(FieldType::HostFullTensorElem);
+          elem_data_components_[block_id].push_back(K_F_ZY);
+          elem_data_integration_point_index_[block_id].push_back(integration_point_index);
+          elem_data_[block_id].push_back(std::vector<double>(num_elem, 0.0));
+          // xz component
+          elem_data_labels_[block_id].push_back(requested_label + "_xz");
+          elem_data_iptdata_field_ids_[block_id].push_back(iptdata_field_id);
+          elem_data_edata_field_ids_[block_id].push_back(edata_field_id);
+          elem_data_types_[block_id].push_back(FieldType::HostFullTensorElem);
+          elem_data_components_[block_id].push_back(K_F_XZ);
+          elem_data_integration_point_index_[block_id].push_back(integration_point_index);
+          elem_data_[block_id].push_back(std::vector<double>(num_elem, 0.0));
         }
       }
     }
@@ -330,7 +331,6 @@ namespace nimble_kokkos {
         nimble_kokkos::Block& block = block_it->second;
         nimble::Element* element_d = block.GetDeviceElement();
         int num_elem_in_block = mesh.GetNumElementsInBlock(block_id);
-        int num_nodes_per_elem = mesh.GetNumNodesPerElement(block_id);
         nimble_kokkos::DeviceElementConnectivityView elem_conn_d = block.GetDeviceElementConnectivityView();
         nimble_kokkos::DeviceVectorNodeGatheredView gathered_reference_coordinate_block_d = gathered_reference_coordinate_d.at(block_index);
         nimble_kokkos::DeviceVectorNodeGatheredView gathered_displacement_block_d = gathered_displacement_d.at(block_index);
@@ -354,37 +354,36 @@ namespace nimble_kokkos {
       int num_elem_in_block = mesh.GetNumElementsInBlock(block_id);
       for (unsigned int i_data=0 ; i_data < elem_data_labels_.at(block_id).size() ; ++i_data) {
         int integration_point_index = elem_data_integration_point_index_.at(block_id).at(i_data);
-        if (integration_point_index != -1) {
-          int iptdata_field_id = elem_data_iptdata_field_ids_.at(block_id).at(i_data);
-          int edata_field_id = elem_data_edata_field_ids_.at(block_id).at(i_data);
-          FieldType field_type = elem_data_types_.at(block_id).at(i_data);
-          if (field_type == FieldType::HostSymTensorElem){
-            nimble_kokkos::DeviceSymTensorIntPtView sym_tensor_data_step_np1_d = model_data.GetDeviceSymTensorIntegrationPointData(block_id, iptdata_field_id, nimble::STEP_NP1);
-            nimble_kokkos::DeviceSymTensorElemView sym_tensor_data_single_int_pt_d = model_data.GetDeviceSymTensorElementData(block_id, edata_field_id);
-            Kokkos::parallel_for("Extract Symmetric Tensor Integration Point Data for Output", num_elem_in_block, KOKKOS_LAMBDA (const int i_elem) {
-                nimble_kokkos::DeviceSymTensorIntPtSubView element_sym_tensor_step_np1_d = Kokkos::subview(sym_tensor_data_step_np1_d, i_elem, Kokkos::ALL, Kokkos::ALL);
-                nimble_kokkos::DeviceSymTensorElemSingleEntryView element_sym_tensor_single_int_pt_d = Kokkos::subview(sym_tensor_data_single_int_pt_d, i_elem, Kokkos::ALL);
-                for (int i=0 ; i<element_sym_tensor_single_int_pt_d.extent(0) ; i++) {
-                  element_sym_tensor_single_int_pt_d(i) = element_sym_tensor_step_np1_d(integration_point_index,i);
-                }
-              });
-            nimble_kokkos::HostSymTensorElemView sym_tensor_data_single_int_pt_h = model_data.GetHostSymTensorElementData(block_id, edata_field_id);
-            deep_copy(sym_tensor_data_single_int_pt_h, sym_tensor_data_single_int_pt_d);
-
-          }
-          else if (field_type == FieldType::HostFullTensorElem) {
-            nimble_kokkos::DeviceFullTensorIntPtView full_tensor_data_step_np1_d = model_data.GetDeviceFullTensorIntegrationPointData(block_id, iptdata_field_id, nimble::STEP_NP1);
-            nimble_kokkos::DeviceFullTensorElemView full_tensor_data_single_int_pt_d = model_data.GetDeviceFullTensorElementData(block_id, edata_field_id);
-            Kokkos::parallel_for("Extract Full Tensor Integration Point Data for Output", num_elem_in_block, KOKKOS_LAMBDA (const int i_elem) {
-                nimble_kokkos::DeviceFullTensorIntPtSubView element_full_tensor_step_np1_d = Kokkos::subview(full_tensor_data_step_np1_d, i_elem, Kokkos::ALL, Kokkos::ALL);
-                nimble_kokkos::DeviceFullTensorElemSingleEntryView element_full_tensor_single_int_pt_d = Kokkos::subview(full_tensor_data_single_int_pt_d, i_elem, Kokkos::ALL);
-                for (int i=0 ; i<element_full_tensor_single_int_pt_d.extent(0) ; i++) {
-                  element_full_tensor_single_int_pt_d(i) = element_full_tensor_step_np1_d(integration_point_index,i);
-                }
-              });
-            nimble_kokkos::HostFullTensorElemView full_tensor_data_single_int_pt_h = model_data.GetHostFullTensorElementData(block_id, edata_field_id);
-            deep_copy(full_tensor_data_single_int_pt_h, full_tensor_data_single_int_pt_d);
-          }
+        if (integration_point_index == -1)
+          continue;
+        auto iptdata_field_id = elem_data_iptdata_field_ids_.at(block_id).at(i_data);
+        auto edata_field_id = elem_data_edata_field_ids_.at(block_id).at(i_data);
+        FieldType field_type = elem_data_types_.at(block_id).at(i_data);
+        if (field_type == FieldType::HostSymTensorElem){
+          nimble_kokkos::DeviceSymTensorIntPtView sym_tensor_data_step_np1_d = model_data.GetDeviceSymTensorIntegrationPointData(block_id, iptdata_field_id, nimble::STEP_NP1);
+          nimble_kokkos::DeviceSymTensorElemView sym_tensor_data_single_int_pt_d = model_data.GetDeviceSymTensorElementData(block_id, edata_field_id);
+          Kokkos::parallel_for("Extract Symmetric Tensor Integration Point Data for Output", num_elem_in_block, KOKKOS_LAMBDA (const int i_elem) {
+              nimble_kokkos::DeviceSymTensorIntPtSubView element_sym_tensor_step_np1_d = Kokkos::subview(sym_tensor_data_step_np1_d, i_elem, Kokkos::ALL, Kokkos::ALL);
+              nimble_kokkos::DeviceSymTensorElemSingleEntryView element_sym_tensor_single_int_pt_d = Kokkos::subview(sym_tensor_data_single_int_pt_d, i_elem, Kokkos::ALL);
+              for (int i=0 ; i<element_sym_tensor_single_int_pt_d.extent(0) ; i++) {
+                element_sym_tensor_single_int_pt_d(i) = element_sym_tensor_step_np1_d(integration_point_index,i);
+              }
+            });
+          nimble_kokkos::HostSymTensorElemView sym_tensor_data_single_int_pt_h = model_data.GetHostSymTensorElementData(block_id, edata_field_id);
+          deep_copy(sym_tensor_data_single_int_pt_h, sym_tensor_data_single_int_pt_d);
+        }
+        else if (field_type == FieldType::HostFullTensorElem) {
+          nimble_kokkos::DeviceFullTensorIntPtView full_tensor_data_step_np1_d = model_data.GetDeviceFullTensorIntegrationPointData(block_id, iptdata_field_id, nimble::STEP_NP1);
+          nimble_kokkos::DeviceFullTensorElemView full_tensor_data_single_int_pt_d = model_data.GetDeviceFullTensorElementData(block_id, edata_field_id);
+          Kokkos::parallel_for("Extract Full Tensor Integration Point Data for Output", num_elem_in_block, KOKKOS_LAMBDA (const int i_elem) {
+              nimble_kokkos::DeviceFullTensorIntPtSubView element_full_tensor_step_np1_d = Kokkos::subview(full_tensor_data_step_np1_d, i_elem, Kokkos::ALL, Kokkos::ALL);
+              nimble_kokkos::DeviceFullTensorElemSingleEntryView element_full_tensor_single_int_pt_d = Kokkos::subview(full_tensor_data_single_int_pt_d, i_elem, Kokkos::ALL);
+              for (int i=0 ; i<element_full_tensor_single_int_pt_d.extent(0) ; i++) {
+                element_full_tensor_single_int_pt_d(i) = element_full_tensor_step_np1_d(integration_point_index,i);
+              }
+            });
+          nimble_kokkos::HostFullTensorElemView full_tensor_data_single_int_pt_h = model_data.GetHostFullTensorElementData(block_id, edata_field_id);
+          deep_copy(full_tensor_data_single_int_pt_h, full_tensor_data_single_int_pt_d);
         }
       }
     }
@@ -437,7 +436,7 @@ namespace nimble_kokkos {
 
   std::vector< std::vector<double> > ExodusOutputManager::GetNodeDataForOutput(nimble_kokkos::ModelData& model_data) {
     for (unsigned int i_data=0 ; i_data < node_data_labels_.size() ; ++i_data) {
-      int field_id = node_data_field_ids_.at(i_data);
+      auto field_id = node_data_field_ids_.at(i_data);
       FieldType field_type = node_data_types_.at(i_data);
       if (field_type == FieldType::HostScalarNode) {
         HostScalarNodeView data = model_data.GetHostScalarNodeData(field_id);
@@ -460,7 +459,7 @@ namespace nimble_kokkos {
     std::vector<int> block_ids = model_data.GetBlockIds();
     for (auto const & block_id : block_ids) {
       for (unsigned int i_data=0 ; i_data < elem_data_labels_.at(block_id).size() ; ++i_data) {
-        int edata_field_id = elem_data_edata_field_ids_.at(block_id).at(i_data);
+        auto edata_field_id = elem_data_edata_field_ids_.at(block_id).at(i_data);
         FieldType field_type = elem_data_types_.at(block_id).at(i_data);
         if (field_type == FieldType::HostScalarElem) {
           HostScalarElemView data = model_data.GetHostScalarElementData(block_id, edata_field_id);

@@ -6,10 +6,10 @@ namespace nimble_kokkos {
 namespace {
 
 inline void compute_block_stress(const BlockData& block_data,
-                                 nimble_kokkos::DeviceFullTensorIntPtView deformation_gradient_step_n_d,
-                                 nimble_kokkos::DeviceFullTensorIntPtView deformation_gradient_step_np1_d,
-                                 nimble_kokkos::DeviceSymTensorIntPtView stress_step_n_d,
-                                 nimble_kokkos::DeviceSymTensorIntPtView stress_step_np1_d,
+                                 const nimble_kokkos::DeviceFullTensorIntPtView& deformation_gradient_step_n_d,
+                                 const nimble_kokkos::DeviceFullTensorIntPtView& deformation_gradient_step_np1_d,
+                                 const nimble_kokkos::DeviceSymTensorIntPtView& stress_step_n_d,
+                                 const nimble_kokkos::DeviceSymTensorIntPtView& stress_step_np1_d,
                                  const double time_n,
                                  const double time_np1) {
   auto material_device = block_data.material_device;
@@ -35,12 +35,12 @@ inline void compute_block_stress(const BlockData& block_data,
 void BlockMaterialInterface::ComputeStress() const {
   for (auto &&block_data : blocks) {
     auto deformation_gradient_step_n_d = model_data.GetDeviceFullTensorIntegrationPointData(
-        block_data.id, field_ids.deformation_gradient, nimble::STEP_N);
+        block_data.id, nimble::FieldID::DeformationGradient, nimble::STEP_N);
     auto deformation_gradient_step_np1_d = model_data.GetDeviceFullTensorIntegrationPointData(
-        block_data.id, field_ids.deformation_gradient, nimble::STEP_NP1);
-    auto stress_step_n_d = model_data.GetDeviceSymTensorIntegrationPointData(block_data.id, field_ids.stress,
+        block_data.id, nimble::FieldID::DeformationGradient, nimble::STEP_NP1);
+    auto stress_step_n_d = model_data.GetDeviceSymTensorIntegrationPointData(block_data.id, nimble::FieldID::Stress,
                                                                              nimble::STEP_N);
-    auto stress_step_np1_d = model_data.GetDeviceSymTensorIntegrationPointData(block_data.id, field_ids.stress,
+    auto stress_step_np1_d = model_data.GetDeviceSymTensorIntegrationPointData(block_data.id, nimble::FieldID::Stress,
                                                                                nimble::STEP_NP1);
     compute_block_stress(block_data, deformation_gradient_step_n_d, deformation_gradient_step_np1_d,
                          stress_step_n_d, stress_step_np1_d, time_n, time_np1);

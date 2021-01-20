@@ -17,10 +17,10 @@ class BlockMaterialInterfaceFactory {
   virtual ~BlockMaterialInterfaceFactory() = default;
 
   virtual std::shared_ptr<BlockMaterialInterface> create(const double time_n, const double time_np1,
-                                                         const FieldIds &field_ids, const std::vector<BlockData> &blocks,
+                                                         const std::vector<BlockData> &blocks,
                                                          nimble_kokkos::ModelData &model_data) const
   {
-    return std::make_shared<nimble_kokkos::BlockMaterialInterface>(time_n, time_np1, field_ids, blocks, model_data);
+    return std::make_shared<nimble_kokkos::BlockMaterialInterface>(time_n, time_np1, blocks, model_data);
   }
 };
 

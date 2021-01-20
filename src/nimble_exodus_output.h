@@ -73,7 +73,7 @@ namespace nimble {
     void Initialize(std::string const & filename,
                     GenesisMesh const & genesis_mesh);
 
-    virtual ~ExodusOutput() {}
+    virtual ~ExodusOutput() = default;
 
     std::string GetFileName() const { return filename_; }
 

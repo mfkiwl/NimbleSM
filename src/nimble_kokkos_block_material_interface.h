@@ -79,13 +79,12 @@ struct BlockData {
 
 class BlockMaterialInterface {
  public:
-  BlockMaterialInterface(const double time_n_, const double time_np1_, const FieldIds &field_ids_,
+  BlockMaterialInterface(const double time_n_, const double time_np1_,
                          const std::vector<BlockData>& blocks_,
                          nimble_kokkos::ModelData &model_data_)
       :
       time_n(time_n_),
       time_np1(time_np1_),
-      field_ids(field_ids_),
       model_data(model_data_),
       blocks(blocks_) {
   }
@@ -97,7 +96,6 @@ class BlockMaterialInterface {
  protected:
   const double time_n;
   const double time_np1;
-  const FieldIds &field_ids;
   nimble_kokkos::ModelData &model_data;
   std::vector<BlockData> blocks;
 };

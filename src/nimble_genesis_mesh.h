@@ -133,9 +133,9 @@ namespace nimble {
 
     const double * GetCoordinatesX() const { return &node_x_[0]; }
 
-    const double * GetCoordinatesY() const { return &node_y_[0]; }
+    const double * GetCoordinatesY() const { return (dim_ > 1) ? &node_y_[0] : nullptr; }
 
-    const double * GetCoordinatesZ() const { return &node_z_[0]; }
+    const double * GetCoordinatesZ() const { return (dim_ > 2) ? &node_z_[0] : nullptr; }
 
     const int * GetConnectivity(int block_id) const { return &block_elem_connectivity_.at(block_id)[0]; }
 

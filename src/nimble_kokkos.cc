@@ -55,9 +55,7 @@
 #include "nimble_parser.h"
 #include "nimble_timer.h"
 #include "nimble_timing_utils.h"
-#include "nimble_utils.h"
 #include "nimble_version.h"
-#include "nimble_view.h"
 #include <cassert>
 #include <nimble_contact_interface.h>
 #include <nimble_kokkos_block_material_interface.h>
@@ -86,7 +84,6 @@ int ExplicitTimeIntegrator(nimble::Parser & parser,
                            nimble_kokkos::ExodusOutputManager & exodus_output_manager,
                            std::shared_ptr<nimble::ContactInterface> contact_interface,
                            std::shared_ptr<nimble_kokkos::BlockMaterialInterfaceFactory> block_material_interface_factory,
-                           nimble_kokkos::FieldIds &field_ids,
                            int num_ranks,
                            int my_rank
 );
@@ -249,16 +246,16 @@ void NimbleKokkosMain(std::shared_ptr<nimble_kokkos::MaterialFactory> material_f
   // Global data
   std::vector<std::string> global_data_labels;
 
-  nimble_kokkos::FieldIds field_ids;
-  field_ids.lumped_mass = model_data.AllocateNodeData(nimble::SCALAR, "lumped_mass", num_nodes);
-  field_ids.reference_coordinates = model_data.AllocateNodeData(nimble::VECTOR, "reference_coordinate", num_nodes);
-  field_ids.displacement = model_data.AllocateNodeData(nimble::VECTOR, "displacement", num_nodes);
-  field_ids.velocity = model_data.AllocateNodeData(nimble::VECTOR, "velocity", num_nodes);
-  field_ids.acceleration =  model_data.AllocateNodeData(nimble::VECTOR, "acceleration", num_nodes);
-  field_ids.internal_force =  model_data.AllocateNodeData(nimble::VECTOR, "internal_force", num_nodes);
-  field_ids.contact_force =  model_data.AllocateNodeData(nimble::VECTOR, "contact_force", num_nodes);
+  model_data.AllocateNodeData(nimble::SCALAR, nimble::FieldID::LumpedMass, num_nodes);
+  model_data.AllocateNodeData(nimble::VECTOR, nimble::FieldID::ReferenceCoordinate, num_nodes);
+  model_data.AllocateNodeData(nimble::VECTOR, nimble::FieldID::Displacement, num_nodes);
+  model_data.AllocateNodeData(nimble::VECTOR, nimble::FieldID::Velocity, num_nodes);
+  model_data.AllocateNodeData(nimble::VECTOR, nimble::FieldID::Acceleration, num_nodes);
+  model_data.AllocateNodeData(nimble::VECTOR, nimble::FieldID::InternalForce, num_nodes);
+  model_data.AllocateNodeData(nimble::VECTOR, nimble::FieldID::ContactForce, num_nodes);
 
-  bool store_unrotated_stress(true);
+//  bool store_unrotated_stress(true);
+  bool store_unrotated_stress = false;
 
   // Blocks
   // std::map<int, nimble::Block>& blocks = model_data.GetBlocks();
@@ -273,28 +270,32 @@ void NimbleKokkosMain(std::shared_ptr<nimble_kokkos::MaterialFactory> material_f
     blocks[block_id] = nimble_kokkos::Block();
     blocks.at(block_id).Initialize(macro_material_parameters, num_elements_in_block, *material_factory);
     //
-    // MPI version use model_data.DeclareElementData(block_id, data_labels_and_lengths);
-    //
     std::vector<double> initial_value(9, 0.0);
     initial_value[0] = initial_value[1] = initial_value[2] = 1.0;
-    field_ids.deformation_gradient = model_data.AllocateIntegrationPointData(block_id, nimble::FULL_TENSOR,
-                                                                             "deformation_gradient",
-                                                                             num_elements_in_block, initial_value);
+    model_data.AllocateIntegrationPointData(block_id, nimble::FULL_TENSOR,
+                                            nimble::FieldID::DeformationGradient,
+                                            num_elements_in_block, initial_value);
     // volume-averaged quantities for I/O are stored as element data
-    model_data.AllocateElementData(block_id, nimble::FULL_TENSOR, "deformation_gradient", num_elements_in_block);
+    model_data.AllocateElementData(block_id, nimble::FULL_TENSOR,
+                                   nimble::FieldID::DeformationGradient, num_elements_in_block);
 
-    field_ids.stress = model_data.AllocateIntegrationPointData(block_id, nimble::SYMMETRIC_TENSOR, "stress",
-                                                               num_elements_in_block);
+    model_data.AllocateIntegrationPointData(block_id, nimble::SYMMETRIC_TENSOR,
+                                            nimble::FieldID::Stress, num_elements_in_block);
     if (store_unrotated_stress) {
-      field_ids.unrotated_stress = model_data.AllocateIntegrationPointData(block_id, nimble::SYMMETRIC_TENSOR, "stress",
-                                                                           num_elements_in_block);
+      model_data.AllocateIntegrationPointData(block_id, nimble::SYMMETRIC_TENSOR,
+                                              nimble::FieldID::UnrotatedStress,
+                                              num_elements_in_block);
     }
 
     // volume-averaged quantities for I/O are stored as element data
-    model_data.AllocateElementData(block_id, nimble::SYMMETRIC_TENSOR, "stress", num_elements_in_block);
+    model_data.AllocateElementData(block_id, nimble::SYMMETRIC_TENSOR,
+                                   nimble::FieldID::Stress,
+                                   num_elements_in_block);
 
     if (parser->GetOutputFieldString().find("volume") != std::string::npos) {
-      model_data.AllocateElementData(block_id, nimble::SCALAR, "volume", num_elements_in_block);
+      model_data.AllocateElementData(block_id, nimble::SCALAR,
+                                     nimble::FieldID::Volume,
+                                     num_elements_in_block);
     }
   }
 
@@ -315,7 +316,7 @@ void NimbleKokkosMain(std::shared_ptr<nimble_kokkos::MaterialFactory> material_f
 
   std::map<int, std::vector<std::string> > derived_elem_data_labels;
   for (auto block_id : block_ids) {
-    derived_elem_data_labels[block_id] = std::vector<std::string>(); // TODO elliminate this
+    derived_elem_data_labels[block_id] = std::vector<std::string>(); // TODO eliminate this
   }
 
   // Initialize the output file
@@ -338,7 +339,6 @@ void NimbleKokkosMain(std::shared_ptr<nimble_kokkos::MaterialFactory> material_f
                            boundary_condition_manager, blocks,
                            exodus_output, exodus_output_manager,
                            contact_interface, block_material_interface_factory,
-                           field_ids,
                            num_ranks, my_rank);
   }
   else {
@@ -359,7 +359,6 @@ int ExplicitTimeIntegrator(nimble::Parser & parser,
                            nimble_kokkos::ExodusOutputManager & exodus_output_manager,
                            std::shared_ptr<nimble::ContactInterface> contact_interface,
                            std::shared_ptr<nimble_kokkos::BlockMaterialInterfaceFactory> block_material_interface_factory,
-                           nimble_kokkos::FieldIds &field_ids,
                            int num_ranks,
                            int my_rank
 )
@@ -405,31 +404,31 @@ int ExplicitTimeIntegrator(nimble::Parser & parser,
   nimble_kokkos::ProfilingTimer watch_simulation;
   watch_simulation.push_region("Lumped mass gather and compute");
 
-  nimble_kokkos::HostScalarNodeView lumped_mass_h = model_data.GetHostScalarNodeData(field_ids.lumped_mass);
-  nimble_kokkos::DeviceScalarNodeView lumped_mass_d = model_data.GetDeviceScalarNodeData(field_ids.lumped_mass);
+  nimble_kokkos::HostScalarNodeView lumped_mass_h = model_data.GetHostScalarNodeData(nimble::FieldID::LumpedMass);
+  nimble_kokkos::DeviceScalarNodeView lumped_mass_d = model_data.GetDeviceScalarNodeData(nimble::FieldID::LumpedMass);
   Kokkos::deep_copy(lumped_mass_h, (double)(0.0));
   Kokkos::deep_copy(lumped_mass_d, (double)(0.0));
 
-  nimble_kokkos::HostVectorNodeView reference_coordinate_h = model_data.GetHostVectorNodeData(field_ids.reference_coordinates);
-  nimble_kokkos::DeviceVectorNodeView reference_coordinate_d = model_data.GetDeviceVectorNodeData(field_ids.reference_coordinates);
+  nimble_kokkos::HostVectorNodeView reference_coordinate_h = model_data.GetHostVectorNodeData(nimble::FieldID::ReferenceCoordinate);
+  nimble_kokkos::DeviceVectorNodeView reference_coordinate_d = model_data.GetDeviceVectorNodeData(nimble::FieldID::ReferenceCoordinate);
 
-  nimble_kokkos::HostVectorNodeView displacement_h = model_data.GetHostVectorNodeData(field_ids.displacement);
-  nimble_kokkos::DeviceVectorNodeView displacement_d = model_data.GetDeviceVectorNodeData(field_ids.displacement);
+  nimble_kokkos::HostVectorNodeView displacement_h = model_data.GetHostVectorNodeData(nimble::FieldID::Displacement);
+  nimble_kokkos::DeviceVectorNodeView displacement_d = model_data.GetDeviceVectorNodeData(nimble::FieldID::Displacement);
   Kokkos::deep_copy(displacement_h, (double)(0.0));
 
-  nimble_kokkos::HostVectorNodeView velocity_h = model_data.GetHostVectorNodeData(field_ids.velocity);
-  nimble_kokkos::DeviceVectorNodeView velocity_d = model_data.GetDeviceVectorNodeData(field_ids.velocity);
+  nimble_kokkos::HostVectorNodeView velocity_h = model_data.GetHostVectorNodeData(nimble::FieldID::Velocity);
+  nimble_kokkos::DeviceVectorNodeView velocity_d = model_data.GetDeviceVectorNodeData(nimble::FieldID::Velocity);
   Kokkos::deep_copy(velocity_h, (double)(0.0));
 
-  nimble_kokkos::HostVectorNodeView acceleration_h = model_data.GetHostVectorNodeData(field_ids.acceleration);
+  nimble_kokkos::HostVectorNodeView acceleration_h = model_data.GetHostVectorNodeData(nimble::FieldID::Acceleration);
   Kokkos::deep_copy(acceleration_h, (double)(0.0));
 
-  nimble_kokkos::HostVectorNodeView internal_force_h = model_data.GetHostVectorNodeData(field_ids.internal_force);
-  nimble_kokkos::DeviceVectorNodeView internal_force_d = model_data.GetDeviceVectorNodeData(field_ids.internal_force);
+  nimble_kokkos::HostVectorNodeView internal_force_h = model_data.GetHostVectorNodeData(nimble::FieldID::InternalForce);
+  nimble_kokkos::DeviceVectorNodeView internal_force_d = model_data.GetDeviceVectorNodeData(nimble::FieldID::InternalForce);
   Kokkos::deep_copy(internal_force_h, (double)(0.0));
 
-  nimble_kokkos::HostVectorNodeView contact_force_h = model_data.GetHostVectorNodeData(field_ids.contact_force);
-  nimble_kokkos::DeviceVectorNodeView contact_force_d = model_data.GetDeviceVectorNodeData(field_ids.contact_force);
+  nimble_kokkos::HostVectorNodeView contact_force_h = model_data.GetHostVectorNodeData(nimble::FieldID::ContactForce);
+  nimble_kokkos::DeviceVectorNodeView contact_force_d = model_data.GetDeviceVectorNodeData(nimble::FieldID::ContactForce);
   Kokkos::deep_copy(contact_force_h, (double)(0.0));
 
   // Compute the lumped mass
@@ -454,7 +453,7 @@ int ExplicitTimeIntegrator(nimble::Parser & parser,
     nimble_kokkos::DeviceVectorNodeGatheredView gathered_reference_coordinate_block_d = gathered_reference_coordinate_d.at(block_index);
     nimble_kokkos::DeviceScalarNodeGatheredView gathered_lumped_mass_block_d = gathered_lumped_mass_d.at(block_index);
 
-    model_data.GatherVectorNodeData(field_ids.reference_coordinates,
+    model_data.GatherVectorNodeData(nimble::FieldID::ReferenceCoordinate,
                                     num_elem_in_block,
                                     num_nodes_per_elem,
                                     elem_conn_d,
@@ -468,7 +467,7 @@ int ExplicitTimeIntegrator(nimble::Parser & parser,
     });
 
     // SCATTER TO NODE DATA
-    model_data.ScatterScalarNodeData(field_ids.lumped_mass,
+    model_data.ScatterScalarNodeData(nimble::FieldID::LumpedMass,
                                      num_elem_in_block,
                                      num_nodes_per_elem,
                                      elem_conn_d,
@@ -672,20 +671,22 @@ int ExplicitTimeIntegrator(nimble::Parser & parser,
       nimble_kokkos::DeviceVectorNodeGatheredView gathered_displacement_block_d = gathered_displacement_d.at(block_index);
       nimble_kokkos::DeviceVectorNodeGatheredView gathered_internal_force_block_d = gathered_internal_force_d.at(block_index);
 
-      model_data.GatherVectorNodeData(field_ids.reference_coordinates, /* TODO SHOULD JUST PASS IN VIEW? */
+      model_data.GatherVectorNodeData(nimble::FieldID::ReferenceCoordinate, /* TODO SHOULD JUST PASS IN VIEW? */
                                       num_elem_in_block, /* TODO SHOULD BE ABLE TO GET THIS OFF VIEW "EXTENT" */
                                       num_nodes_per_elem,
                                       elem_conn_d,
                                       gathered_reference_coordinate_block_d);
 
-      model_data.GatherVectorNodeData(field_ids.displacement,
+      model_data.GatherVectorNodeData(nimble::FieldID::Displacement,
                                       num_elem_in_block,
                                       num_nodes_per_elem,
                                       elem_conn_d,
                                       gathered_displacement_block_d);
 
-      nimble_kokkos::DeviceFullTensorIntPtView deformation_gradient_step_np1_d = model_data
-          .GetDeviceFullTensorIntegrationPointData(block_id, field_ids.deformation_gradient, nimble::STEP_NP1);
+      auto deformation_gradient_step_np1_d =
+          model_data.GetDeviceFullTensorIntegrationPointData(block_id,
+                                                             nimble::FieldID::DeformationGradient,
+                                                             nimble::STEP_NP1);
 
       // COMPUTE DEFORMATION GRADIENTS
       Kokkos::parallel_for("Deformation Gradient", num_elem_in_block, KOKKOS_LAMBDA (const int i_elem) {
@@ -696,12 +697,13 @@ int ExplicitTimeIntegrator(nimble::Parser & parser,
                                                element_displacement_d,
                                                element_deformation_gradient_step_np1_d);
       });
+
     }
     watch_internal_details.pop_region_and_report_time();
 
     {
       watch_internal_details.push_region("Material stress calculation");
-      auto block_material_interface = block_material_interface_factory->create(time_previous, time_current, field_ids, block_data, model_data);
+      auto block_material_interface = block_material_interface_factory->create(time_previous, time_current, block_data, model_data);
       block_material_interface->ComputeStress();
       watch_internal_details.pop_region_and_report_time();
     }
@@ -722,7 +724,7 @@ int ExplicitTimeIntegrator(nimble::Parser & parser,
       nimble_kokkos::DeviceVectorNodeGatheredView gathered_internal_force_block_d = gathered_internal_force_d.at(block_index);
 
       nimble_kokkos::DeviceSymTensorIntPtView stress_step_np1_d = model_data.GetDeviceSymTensorIntegrationPointData(block_id,
-                                                                                                                    field_ids.stress,
+                                                                                                                    nimble::FieldID::Stress,
                                                                                                                     nimble::STEP_NP1);
 
       // COMPUTE NODAL FORCES
@@ -737,7 +739,7 @@ int ExplicitTimeIntegrator(nimble::Parser & parser,
                                       element_internal_force_d);
       });
 
-      model_data.ScatterVectorNodeData(field_ids.internal_force,
+      model_data.ScatterVectorNodeData(nimble::FieldID::InternalForce,
                                        num_elem_in_block,
                                        num_nodes_per_elem,
                                        elem_conn_d,
@@ -831,21 +833,27 @@ int ExplicitTimeIntegrator(nimble::Parser & parser,
     for (block_index = 0, block_it = blocks.begin(); block_it != blocks.end(); block_index++, block_it++) {
       int block_id = block_it->first;
       auto deformation_gradient_step_n_d = model_data.GetDeviceFullTensorIntegrationPointData(
-          block_id, field_ids.deformation_gradient, nimble::STEP_N);
-      auto unrotated_stress_step_n_d = model_data.GetDeviceSymTensorIntegrationPointData(block_id,
-                                                                                         field_ids.unrotated_stress,
-                                                                                         nimble::STEP_N);
-      auto stress_step_n_d = model_data.GetDeviceSymTensorIntegrationPointData(block_id, field_ids.stress,
+          block_id, nimble::FieldID::DeformationGradient, nimble::STEP_N);
+      //------------
+//      auto unrotated_stress_step_n_d = model_data.GetDeviceSymTensorIntegrationPointData(block_id,
+//                                                                                         nimble::FieldID::UnrotatedStress,
+//                                                                                         nimble::STEP_N);
+      //------------
+      auto stress_step_n_d = model_data.GetDeviceSymTensorIntegrationPointData(block_id, nimble::FieldID::Stress,
                                                                                nimble::STEP_N);
       auto deformation_gradient_step_np1_d = model_data.GetDeviceFullTensorIntegrationPointData(
-          block_id, field_ids.deformation_gradient, nimble::STEP_NP1);
-      auto unrotated_stress_step_np1_d = model_data.GetDeviceSymTensorIntegrationPointData(block_id,
-                                                                                           field_ids.unrotated_stress,
-                                                                                           nimble::STEP_NP1);
-      auto stress_step_np1_d = model_data.GetDeviceSymTensorIntegrationPointData(block_id, field_ids.stress,
+          block_id, nimble::FieldID::DeformationGradient, nimble::STEP_NP1);
+      //------------
+//      auto unrotated_stress_step_np1_d = model_data.GetDeviceSymTensorIntegrationPointData(block_id,
+//                                                                                           nimble::FieldID::UnrotatedStress,
+//                                                                                           nimble::STEP_NP1);
+      //------------
+      auto stress_step_np1_d = model_data.GetDeviceSymTensorIntegrationPointData(block_id, nimble::FieldID::Stress,
                                                                                  nimble::STEP_NP1);
       Kokkos::deep_copy(deformation_gradient_step_n_d, deformation_gradient_step_np1_d);
-      Kokkos::deep_copy(unrotated_stress_step_n_d, unrotated_stress_step_np1_d);
+      //------------
+//      Kokkos::deep_copy(unrotated_stress_step_n_d, unrotated_stress_step_np1_d);
+      //------------
       Kokkos::deep_copy(stress_step_n_d, stress_step_np1_d);
     }
     watch_internal.pop_region_and_report_time();
