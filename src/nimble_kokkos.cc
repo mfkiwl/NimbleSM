@@ -346,21 +346,13 @@ int ExplicitTimeIntegrator(nimble::Parser & parser,
   int block_index;
   std::map<int, nimble_kokkos::Block>::iterator block_it;
   nimble_kokkos::ProfilingTimer watch_simulation;
-  std::vector<nimble_kokkos::DeviceVectorNodeGatheredView>
-      gathered_reference_coordinate_d(
-          num_blocks, nimble_kokkos::DeviceVectorNodeGatheredView(
-                          "gathered_reference_coordinates", 1));
 
-  model_data->ComputeLumpedMass(mesh, gathered_reference_coordinate_d);
+  model_data->ComputeLumpedMass(mesh);
 
-  std::vector<nimble_kokkos::DeviceVectorNodeGatheredView> gathered_displacement_d(num_blocks, nimble_kokkos::DeviceVectorNodeGatheredView("gathered_displacement", 1));
-  std::vector<nimble_kokkos::DeviceVectorNodeGatheredView> gathered_internal_force_d(num_blocks, nimble_kokkos::DeviceVectorNodeGatheredView("gathered_internal_force", 1));
   std::vector<nimble_kokkos::DeviceVectorNodeGatheredView> gathered_contact_force_d(num_blocks, nimble_kokkos::DeviceVectorNodeGatheredView("gathered_contact_force", 1));
   for (block_index=0, block_it=blocks.begin(); block_it!=blocks.end() ; block_index++, block_it++) {
     int block_id = block_it->first;
     int num_elem_in_block = mesh.GetNumElementsInBlock(block_id);
-    Kokkos::resize(gathered_displacement_d.at(block_index), num_elem_in_block);
-    Kokkos::resize(gathered_internal_force_d.at(block_index), num_elem_in_block);
     Kokkos::resize(gathered_contact_force_d.at(block_index), num_elem_in_block);
   }
   //
@@ -472,8 +464,7 @@ int ExplicitTimeIntegrator(nimble::Parser & parser,
 
   // Output to Exodus file
   watch_simulation.push_region("Output");
-  model_data->UpdateOutputFields(mesh, gathered_reference_coordinate_d,
-                                 gathered_displacement_d);
+  model_data->UpdateOutputFields(mesh);
   {
     auto elem_data_labels_for_output = model_data->GetElementDataLabelsForOutput();
     auto derived_elem_data_labels = model_data->GetDerivedElementDataLabelsForOutput();
@@ -565,9 +556,7 @@ int ExplicitTimeIntegrator(nimble::Parser & parser,
     // Compute element-level kinematics
 
     watch_internal_details.push_region("Element kinematics");
-    model_data->ComputeElementKinematics(mesh, gathered_reference_coordinate_d,
-                                         gathered_displacement_d,
-                                         gathered_internal_force_d);
+    model_data->ComputeElementKinematics(mesh);
     watch_internal_details.pop_region_and_report_time();
 
     {
@@ -579,9 +568,7 @@ int ExplicitTimeIntegrator(nimble::Parser & parser,
 
     // Stress divergence
     watch_internal_details.push_region("Stress divergence calculation");
-    model_data->ComputeInternalForce(mesh, gathered_reference_coordinate_d,
-                                     gathered_displacement_d,
-                                     gathered_internal_force_d);
+    model_data->ComputeInternalForce(mesh);
     watch_internal_details.pop_region_and_report_time();
     total_internal_force_time += watch_internal.pop_region_and_report_time();
 
@@ -642,8 +629,7 @@ int ExplicitTimeIntegrator(nimble::Parser & parser,
       Kokkos::deep_copy(displacement_d, displacement_h);
       Kokkos::deep_copy(velocity_d, velocity_h);
       //--
-      model_data->UpdateOutputFields(mesh, gathered_reference_coordinate_d,
-                                     gathered_displacement_d);
+      model_data->UpdateOutputFields(mesh);
       auto elem_data_labels_for_output = model_data->GetElementDataLabelsForOutput();
       auto derived_elem_data_labels = model_data->GetDerivedElementDataLabelsForOutput();
 

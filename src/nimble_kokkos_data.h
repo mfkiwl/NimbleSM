@@ -222,22 +222,13 @@ public:
 
   void SpecifyOutputFields(const std::string &output_field_string) override;
 
-  void UpdateOutputFields(const nimble::GenesisMesh &mesh,
-                          std::vector<nimble_kokkos::DeviceVectorNodeGatheredView> &gathered_reference_coordinate_d,
-                          std::vector<nimble_kokkos::DeviceVectorNodeGatheredView> &gathered_displacement_d);
+  void UpdateOutputFields(const nimble::GenesisMesh &mesh);
 
-  void ComputeLumpedMass(const nimble::GenesisMesh &mesh,
-                         std::vector<nimble_kokkos::DeviceVectorNodeGatheredView> &gathered_reference_coordinate_d);
+  void ComputeLumpedMass(const nimble::GenesisMesh &mesh);
 
-  void ComputeElementKinematics(const nimble::GenesisMesh &mesh,
-                                std::vector<nimble_kokkos::DeviceVectorNodeGatheredView> &gathered_reference_coordinate_d,
-                                std::vector<nimble_kokkos::DeviceVectorNodeGatheredView> &gathered_displacement_d,
-                                std::vector<nimble_kokkos::DeviceVectorNodeGatheredView> &gathered_internal_force_d);
+  void ComputeElementKinematics(const nimble::GenesisMesh &mesh);
 
-  void ComputeInternalForce(const nimble::GenesisMesh &mesh,
-                            std::vector<nimble_kokkos::DeviceVectorNodeGatheredView> &gathered_reference_coordinate_d,
-                            std::vector<nimble_kokkos::DeviceVectorNodeGatheredView> &gathered_displacement_d,
-                            std::vector<nimble_kokkos::DeviceVectorNodeGatheredView> &gathered_internal_force_d);
+  void ComputeInternalForce(const nimble::GenesisMesh &mesh);
 
   std::vector< std::vector<double> > GetNodeDataForOutput()
   { return exodus_output_manager_.GetNodeDataForOutput(this); }
@@ -286,9 +277,9 @@ protected:
 
   nimble_kokkos::ProfilingTimer watch_simulation_;
 
-//  std::vector<nimble_kokkos::DeviceVectorNodeGatheredView> gathered_reference_coordinate_d;
-//  std::vector<nimble_kokkos::DeviceVectorNodeGatheredView> gathered_displacement_d;
-//  std::vector<nimble_kokkos::DeviceVectorNodeGatheredView> gathered_internal_force_d;
+  std::vector<nimble_kokkos::DeviceVectorNodeGatheredView> gathered_reference_coordinate_d;
+  std::vector<nimble_kokkos::DeviceVectorNodeGatheredView> gathered_displacement_d;
+  std::vector<nimble_kokkos::DeviceVectorNodeGatheredView> gathered_internal_force_d;
 
   friend class nimble_kokkos::ExodusOutputManager;
 

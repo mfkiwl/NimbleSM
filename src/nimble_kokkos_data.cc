@@ -866,8 +866,7 @@ void ModelData::SpecifyOutputFields(const std::string &output_field_string)
 }
 
 
-void ModelData::ComputeLumpedMass(const nimble::GenesisMesh &mesh,
-                                  std::vector<nimble_kokkos::DeviceVectorNodeGatheredView> &gathered_reference_coordinate_d)
+void ModelData::ComputeLumpedMass(const nimble::GenesisMesh &mesh)
 {
 
   int num_blocks = static_cast<int>(mesh.GetNumBlocks());
@@ -961,9 +960,7 @@ void ModelData::ComputeLumpedMass(const nimble::GenesisMesh &mesh,
 
 }
 
-void ModelData::UpdateOutputFields(const nimble::GenesisMesh &mesh,
-                                   std::vector<nimble_kokkos::DeviceVectorNodeGatheredView> &gathered_reference_coordinate_d,
-                                   std::vector<nimble_kokkos::DeviceVectorNodeGatheredView> &gathered_displacement_d)
+void ModelData::UpdateOutputFields(const nimble::GenesisMesh &mesh)
 {
   exodus_output_manager_.ComputeElementData(mesh, this,
                                             blocks_,
@@ -971,10 +968,7 @@ void ModelData::UpdateOutputFields(const nimble::GenesisMesh &mesh,
                                             gathered_displacement_d);
 }
 
-void ModelData::ComputeElementKinematics(const nimble::GenesisMesh &mesh,
-                                         std::vector<nimble_kokkos::DeviceVectorNodeGatheredView> &gathered_reference_coordinate_d,
-                                         std::vector<nimble_kokkos::DeviceVectorNodeGatheredView> &gathered_displacement_d,
-                                         std::vector<nimble_kokkos::DeviceVectorNodeGatheredView> &gathered_internal_force_d)
+void ModelData::ComputeElementKinematics(const nimble::GenesisMesh &mesh)
 {
 
   int block_index = 0;
@@ -1021,10 +1015,7 @@ void ModelData::ComputeElementKinematics(const nimble::GenesisMesh &mesh,
 
 }
 
-void ModelData::ComputeInternalForce(const nimble::GenesisMesh &mesh,
-                                     std::vector<nimble_kokkos::DeviceVectorNodeGatheredView> &gathered_reference_coordinate_d,
-                                     std::vector<nimble_kokkos::DeviceVectorNodeGatheredView> &gathered_displacement_d,
-                                     std::vector<nimble_kokkos::DeviceVectorNodeGatheredView> &gathered_internal_force_d)
+void ModelData::ComputeInternalForce(const nimble::GenesisMesh &mesh)
 {
 
   int block_index = 0;
@@ -1070,7 +1061,6 @@ void ModelData::ComputeInternalForce(const nimble::GenesisMesh &mesh,
 
 void ModelData::InitializeGatheredData(const nimble::GenesisMesh &mesh)
 {
-/*
   int num_blocks = static_cast<int>(mesh.GetNumBlocks());
 
   gathered_reference_coordinate_d.resize(num_blocks, nimble_kokkos::DeviceVectorNodeGatheredView("gathered_reference_coordinates", 1));
@@ -1083,8 +1073,8 @@ void ModelData::InitializeGatheredData(const nimble::GenesisMesh &mesh)
       int num_elem_in_block = mesh.GetNumElementsInBlock(block_id);
       Kokkos::resize(gathered_displacement_d.at(block_index), num_elem_in_block);
       Kokkos::resize(gathered_internal_force_d.at(block_index), num_elem_in_block);
+      block_index += 1;
   }
-*/
 }
 
 } // namespace nimble_kokkos
