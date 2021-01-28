@@ -57,6 +57,13 @@ namespace nimble_kokkos {
     InstantiateElement();
     int num_material_points = num_elements * element_host_->NumIntegrationPointsPerElement();
     InstantiateMaterialModel(num_material_points, factory);
+    //-----
+    // initialize element connectivity on device
+    //// UH --- TODO Fix
+    int num_nodes_per_element = 8;
+    int elem_conn_length = num_elements * num_nodes_per_element;
+    Kokkos::resize(elem_conn_d, elem_conn_length);
+    //-----
   }
 
   void Block::InstantiateMaterialModel(int num_material_points,
@@ -78,6 +85,7 @@ namespace nimble_kokkos {
     Kokkos::parallel_for(1, KOKKOS_LAMBDA(int) {
         new (pointer_that_lives_on_the_stack) nimble::HexElement();
       });
+
   }
 
   double Block::ComputeCriticalTimeStep(const double * const node_reference_coordinates,

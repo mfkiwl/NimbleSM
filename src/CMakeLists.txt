@@ -1,6 +1,7 @@
 message("src/CMakeLists.txt")
 
 target_sources(nimble PRIVATE
+  ${CMAKE_CURRENT_LIST_DIR}/nimble_data.cc
   ${CMAKE_CURRENT_LIST_DIR}/nimble_data_manager.cc
   ${CMAKE_CURRENT_LIST_DIR}/nimble_data_utils.cc
   ${CMAKE_CURRENT_LIST_DIR}/nimble_mesh_utils.cc
@@ -21,6 +22,7 @@ target_sources(nimble PRIVATE
   ${CMAKE_CURRENT_LIST_DIR}/nimble_contact_manager.cc)
 
 set(NIMBLE_PUBLIC_HEADERS
+  ${CMAKE_CURRENT_LIST_DIR}/nimble_data.h
   ${CMAKE_CURRENT_LIST_DIR}/nimble_data_manager.h
   ${CMAKE_CURRENT_LIST_DIR}/nimble_data_utils.h
   ${CMAKE_CURRENT_LIST_DIR}/nimble_mesh_utils.h
@@ -99,7 +101,7 @@ target_link_libraries(NimbleSM_MPI PRIVATE nimble::nimble)
 IF(NIMBLE_HAVE_KOKKOS)
   target_sources(nimble PRIVATE
     ${CMAKE_CURRENT_LIST_DIR}/nimble_kokkos_material_factory.cc
-    ${CMAKE_CURRENT_LIST_DIR}/nimble_kokkos_data_manager.cc
+    ${CMAKE_CURRENT_LIST_DIR}/nimble_kokkos_data.cc
     ${CMAKE_CURRENT_LIST_DIR}/nimble_exodus_output_manager.cc
     ${CMAKE_CURRENT_LIST_DIR}/nimble_kokkos_block.cc
     ${CMAKE_CURRENT_LIST_DIR}/nimble_kokkos_block_material_interface.cc
@@ -107,7 +109,7 @@ IF(NIMBLE_HAVE_KOKKOS)
 
   set(NIMBLE_PUBLIC_HEADERS ${NIMBLE_PUBLIC_HEADERS}
     ${CMAKE_CURRENT_LIST_DIR}/nimble_kokkos_material_factory.h
-    ${CMAKE_CURRENT_LIST_DIR}/nimble_kokkos_data_manager.h
+    ${CMAKE_CURRENT_LIST_DIR}/nimble_kokkos_data.h
     ${CMAKE_CURRENT_LIST_DIR}/nimble_exodus_output_manager.h
     ${CMAKE_CURRENT_LIST_DIR}/nimble_kokkos_block.h
     ${CMAKE_CURRENT_LIST_DIR}/nimble_kokkos.h)

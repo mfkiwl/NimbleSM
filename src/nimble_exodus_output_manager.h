@@ -44,7 +44,6 @@
 #ifndef NIMBLE_EXODUS_OUTPUT_MANAGER_H
 #define NIMBLE_EXODUS_OUTPUT_MANAGER_H
 
-#include "nimble_kokkos_data_manager.h"
 #include "nimble_genesis_mesh.h"
 #include "nimble_kokkos_block.h"
 
@@ -56,6 +55,8 @@
 
 namespace nimble_kokkos {
 
+  class ModelData;
+
   class ExodusOutputManager {
 
   public:
@@ -64,46 +65,46 @@ namespace nimble_kokkos {
                             volume_field_id_(-1)
     {}
 
-    void SpecifyOutputFields(nimble_kokkos::ModelData& model_data,
+    void SpecifyOutputFields(nimble_kokkos::ModelData* model_data,
                              std::string const & output_command_string);
 
-    void ComputeElementData(nimble::GenesisMesh& mesh,
-                            nimble_kokkos::ModelData& model_data,
+    void ComputeElementData(const nimble::GenesisMesh& mesh,
+                            nimble_kokkos::ModelData* model_data,
                             std::map<int, nimble_kokkos::Block>& blocks,
                             std::vector<nimble_kokkos::DeviceVectorNodeGatheredView>& gathered_reference_coordinate_d,
                             std::vector<nimble_kokkos::DeviceVectorNodeGatheredView>& gathered_displacement_d);
 
     std::vector<std::string> GetNodeDataLabelsForOutput() { return node_data_labels_; }
 
-    std::vector< std::vector<double> > GetNodeDataForOutput(nimble_kokkos::ModelData& model_data);
+    std::vector< std::vector<double> > GetNodeDataForOutput(nimble_kokkos::ModelData* model_data);
 
     std::map<int, std::vector<std::string> > GetElementDataLabelsForOutput() { return elem_data_labels_; }
 
-    std::map<int, std::vector< std::vector<double> > > GetElementDataForOutput(nimble_kokkos::ModelData& model_data);
+    std::map<int, std::vector< std::vector<double> > > GetElementDataForOutput(nimble_kokkos::ModelData* model_data);
 
   private:
 
     bool output_element_volume_;
 
     std::vector<std::string> node_data_labels_;
-    std::vector<ModelData::FieldIndex> node_data_field_ids_;
+    std::vector<int> node_data_field_ids_;
     std::vector<FieldType> node_data_types_;
     std::vector<int> node_data_components_;
     std::vector< std::vector<double> > node_data_;
 
     std::map<int, std::vector<std::string> > elem_data_labels_;
-    std::map<int, std::vector<ModelData::FieldIndex> > elem_data_iptdata_field_ids_;
-    std::map<int, std::vector<ModelData::FieldIndex> > elem_data_edata_field_ids_;
+    std::map<int, std::vector<int> > elem_data_iptdata_field_ids_;
+    std::map<int, std::vector<int> > elem_data_edata_field_ids_;
     std::map<int, std::vector<FieldType> > elem_data_types_;
     std::map<int, std::vector<int> > elem_data_integration_point_index_;
     std::map<int, std::vector<int> > elem_data_components_;
     std::map<int, std::vector< std::vector<double> > > elem_data_;
 
-    ModelData::FieldIndex volume_field_id_;
+    int volume_field_id_;
     std::map<int, std::vector<int> > sym_tensor_field_ids_requiring_volume_average_;
     std::map<int, std::vector<int> > full_tensor_field_ids_requiring_volume_average_;
   };
 
-} // namespace nimble
+  } // namespace nimble
 
 #endif // NIMBLE_OUTPUT_EXODUS_H

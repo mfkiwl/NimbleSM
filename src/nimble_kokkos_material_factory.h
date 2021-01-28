@@ -60,9 +60,9 @@ namespace nimble_kokkos {
 class MaterialFactory : public nimble::MaterialFactoryBase {
  public:
   explicit MaterialFactory();
-  virtual ~MaterialFactory() = default;
+  ~MaterialFactory() override = default;
 
-  void parse_and_create(const std::string& mat_params, const int num_mat_points);
+  void parse_and_create(const std::string& mat_params, int num_mat_points);
 
   inline std::shared_ptr<nimble::Material> get_material_host() const { return material_host; }
 
@@ -77,7 +77,7 @@ class MaterialFactory : public nimble::MaterialFactoryBase {
 
   std::shared_ptr<const nimble::MaterialParameters> material_params;
 
-  virtual void create() override;
+  void create() override;
 };
 
 }

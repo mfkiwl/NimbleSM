@@ -1,0 +1,256 @@
+/*
+//@HEADER
+// ************************************************************************
+//
+//                                NimbleSM
+//                             Copyright 2018
+//   National Technology & Engineering Solutions of Sandia, LLC (NTESS)
+//
+// Under the terms of Contract DE-NA0003525 with NTESS, the U.S. Government
+// retains certain rights in this software.
+//
+// Redistribution and use in source and binary forms, with or without
+// modification, are permitted provided that the following conditions are
+// met:
+//
+// 1. Redistributions of source code must retain the above copyright
+// notice, this list of conditions and the following disclaimer.
+//
+// 2. Redistributions in binary form must reproduce the above copyright
+// notice, this list of conditions and the following disclaimer in the
+// documentation and/or other materials provided with the distribution.
+//
+// 3. Neither the name of the Corporation nor the names of the
+// contributors may be used to endorse or promote products derived from
+// this software without specific prior written permission.
+//
+// THIS SOFTWARE IS PROVIDED BY NTESS "AS IS" AND ANY EXPRESS OR IMPLIED
+// WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE IMPLIED WARRANTIES OF
+// MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE ARE DISCLAIMED. IN
+// NO EVENT SHALL NTESS BE LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL,
+// SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT LIMITED
+// TO, PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES; LOSS OF USE, DATA, OR
+// PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF
+// LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING
+// NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF THIS
+// SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
+//
+// Questions?  Contact David Littlewood (djlittl@sandia.gov)
+//
+// ************************************************************************
+//@HEADER
+*/
+
+#ifndef NIMBLE_DATA_H
+#define NIMBLE_DATA_H
+
+#include "nimble_block.h"
+#include "nimble_data_utils.h"
+#include "nimble_exodus_output.h"
+#include "nimble_genesis_mesh.h"
+#include "nimble_linear_solver.h"
+
+#ifdef NIMBLE_HAVE_DARMA
+  #include "darma.h"
+#else
+  #include <vector>
+  #include <string>
+  #include <map>
+#endif
+
+namespace nimble {
+
+class BaseModelData {
+
+public:
+  BaseModelData() = default;
+
+  virtual ~BaseModelData() = default;
+
+  void SetDimension(int dim);
+
+  int GetDimension() const { return dim_; }
+
+  void SetCriticalTimeStep(double time_step) {
+    critical_time_step_ = time_step;
+  }
+
+  double GetCriticalTimeStep() const { return critical_time_step_; }
+
+  const std::vector<std::string> &GetNodeDataLabelsForOutput() const {
+    return output_node_component_labels_;
+  }
+
+  const std::map<int, std::vector<std::string>> &GetElementDataLabels() const {
+    return element_component_labels_;
+  }
+
+  const std::map<int, std::vector<std::string>> &
+  GetElementDataLabelsForOutput() const {
+    return output_element_component_labels_;
+  }
+
+  const std::map<int, std::vector<std::string>> &
+  GetDerivedElementDataLabelsForOutput() const {
+    return derived_output_element_data_labels_;
+  }
+
+  void SetDerivedElementDataLabelsForOutput(
+      std::map<int, std::vector<std::string>> &&ref) {
+    derived_output_element_data_labels_ = ref;
+  }
+
+  virtual int AllocateNodeData(Length length, std::string label,
+                               int num_objects) = 0;
+
+  virtual void AllocateNodeData(Length length, nimble::FieldID field,
+                               int num_objects) { };
+
+  virtual void AllocateElementData(int block_id,
+                                   nimble::Length length, nimble::FieldID field,
+                                   int num_objects) { };
+
+  virtual void AllocateIntegrationPointData(int block_id,
+                                    nimble::Length length,
+                                    nimble::FieldID field,
+                                    int num_objects)
+  {
+    std::vector<double> empty;
+    AllocateIntegrationPointData(block_id, length, field, num_objects, empty);
+  };
+
+  virtual void AllocateIntegrationPointData(int block_id,
+                                            nimble::Length length,
+                                            nimble::FieldID field,
+                                            int num_objects,
+                                            const std::vector<double> &initial_value)
+  { };
+
+  virtual int GetFieldId(const std::string &field_label) const = 0;
+
+  virtual void SetReferenceCoordinates(const nimble::GenesisMesh &mesh) = 0;
+
+  virtual void SpecifyOutputFields(const std::string &output_field_string) = 0;
+
+  virtual void SwapStates() = 0;
+
+protected:
+  //! Problem dimension, either 2 or 3.
+  int dim_ = 3;
+
+  //! Critical time step
+  double critical_time_step_ = 0.0;
+
+  //! Output labels for node data that will be written to disk
+  std::vector<std::string> output_node_component_labels_;
+
+  //! Map key is the block_id, vector contains component-wise label for each scalar entry in the data array.
+  std::map<int, std::vector<std::string>> element_component_labels_;
+
+  //! Output labels for element data that will be written to disk.
+  std::map<int, std::vector<std::string>> output_element_component_labels_;
+
+  //! Output labels for derived element data that will be written to disk.
+  std::map<int, std::vector<std::string>> derived_output_element_data_labels_;
+};
+
+class ModelData : public BaseModelData {
+
+public:
+  ModelData() = default;
+
+  ~ModelData() override = default;
+
+#ifdef NIMBLE_HAVE_DARMA
+  template <typename ArchiveType> void serialize(ArchiveType &ar) {
+    ar | dim_ | critical_time_step_ | block_ids_ | blocks_ | data_fields_ |
+        node_data_ | output_node_component_labels_ | element_data_fields_ |
+        element_component_labels_ | element_data_n_ | element_data_np1_ |
+        output_element_component_labels_ | derived_output_element_data_labels_ |
+        globally_shared_nodes_ | global_node_id_to_local_node_id_;
+  }
+#endif
+
+  int GetFieldId(const std::string &label) const override;
+
+  Field GetField(int field_id);
+
+  int AllocateNodeData(Length length, std::string label,
+                       int num_objects) override;
+
+  double *GetNodeData(int field_id);
+
+  void GetNodeDataForOutput(
+      std::vector<std::vector<double>> &single_component_arrays);
+
+  void DeclareElementData(int block_id,
+                          std::vector<std::pair<std::string, Length>> const
+                              &data_labels_and_lengths);
+
+  void AllocateElementData(
+      std::map<int, int> const &num_integration_points_in_each_block);
+
+  std::vector<double> &GetElementDataOld(int block_id) {
+    return element_data_n_.at(block_id);
+  }
+
+  std::vector<double> &GetElementDataNew(int block_id) {
+    return element_data_np1_.at(block_id);
+  }
+
+  void GetElementDataForOutput(
+      std::map<int, std::vector<std::vector<double>>> &single_component_arrays);
+
+  void SpecifyOutputFields(const std::string &output_field_string) override;
+
+  std::map<int, Block> &GetBlocks() { return blocks_; }
+
+  std::map<int, Block> const &GetBlocks() const { return blocks_; }
+
+  std::vector<int> &GetGloballySharedNodes() { return globally_shared_nodes_; }
+
+  std::map<int, int> &GetGlobalNodeIdToLocalNodeIdMap() {
+    return global_node_id_to_local_node_id_;
+  }
+
+  void SwapStates() override { element_data_n_.swap(element_data_np1_); }
+
+  void SetReferenceCoordinates(const nimble::GenesisMesh &mesh) override;
+
+protected:
+  void AssignFieldId(Field &field);
+
+  void GetNodeDataComponent(int field_id, int component,
+                            double *component_data);
+
+  //! Block ids
+  std::vector<int> block_ids_;
+
+  //! Blocks
+  std::map<int, Block> blocks_;
+
+  //! Map key is the field_id, value is the corresponding Field.
+  std::map<int, Field> data_fields_;
+
+  //! Map key is the field_id, vector contains the nested data array for the given nodal field.
+  std::map<int, std::vector<double>> node_data_;
+
+  //! Map key is the block_id, the vector contains the field ids for the fields on that block.
+  std::map<int, std::vector<int>> element_data_fields_;
+
+  //! Map key is the block_id, vector contains full data array for that block at step N.
+  std::map<int, std::vector<double>> element_data_n_;
+
+  //! Map key is the block_id, vector contains full data array for that block at step N+1.
+  std::map<int, std::vector<double>> element_data_np1_;
+
+  //! List of node ids that are shared across multiple ranks
+  std::vector<int> globally_shared_nodes_;
+
+  //! Map from global node it to local node id
+  std::map<int, int> global_node_id_to_local_node_id_;
+};
+
+} // namespace nimble
+
+#endif

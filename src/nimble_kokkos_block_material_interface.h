@@ -46,7 +46,7 @@
 
 #include <nimble_data_utils.h>
 #include <nimble_kokkos_block.h>
-#include <nimble_kokkos_data_manager.h>
+#include <nimble_kokkos_data.h>
 #include <nimble_kokkos_defs.h>
 #include <nimble_utils.h>
 

@@ -142,6 +142,43 @@ namespace nimble {
                        std::map<int, Field> const & data_fields,
                        int dim);
 
+  enum class FieldID : char {
+    FailFlag = -1,
+    Acceleration,
+    ContactForce,
+    DeformationGradient,
+    Displacement,
+    InternalForce,
+    LumpedMass,
+    ReferenceCoordinate,
+    Stress,
+    UnrotatedStress,
+    Velocity,
+    Volume
+  };
+
+  static std::map<nimble::FieldID, std::string> fieldToLabel = {
+      {FieldID::Acceleration, "acceleration"},
+      {FieldID::ContactForce, "contact_force"},
+      {FieldID::DeformationGradient, "deformation_gradient"},
+      {FieldID::Displacement, "displacement"},
+      {FieldID::InternalForce, "internal_force"},
+      {FieldID::LumpedMass, "lumped_mass"},
+      {FieldID::ReferenceCoordinate, "reference_coordinate"},
+      {FieldID::Stress, "stress"},
+      {FieldID::UnrotatedStress, "unrotated_stress"},
+      {FieldID::Velocity, "velocity"},
+      {FieldID::Volume, "volume"}};
+
+  static nimble::FieldID GetFieldID(const std::string &label) {
+    for (const auto &ipair : fieldToLabel) {
+      auto myLabel = ipair.second;
+      if (myLabel == label)
+        return ipair.first;
+    }
+    return FieldID::FailFlag;
+  }
+
 } // namespace nimble
 
 #endif

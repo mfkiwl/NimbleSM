@@ -41,8 +41,8 @@
 //@HEADER
 */
 
-#ifndef NIMBLE_KOKKOS_DATA_MANAGER_H
-#define NIMBLE_KOKKOS_DATA_MANAGER_H
+#ifndef NIMBLE_KOKKOS_DATA_H
+#define NIMBLE_KOKKOS_DATA_H
 
 #include <Kokkos_Core.hpp>
 #include <string>
@@ -50,72 +50,16 @@
 #include <vector>
 #include <memory>
 
-#include "nimble_kokkos_defs.h"
+#include "nimble_data.h"
 #include "nimble_data_utils.h"
-#include "nimble_data_manager.h"
+#include "nimble_exodus_output_manager.h"
+#include "nimble_kokkos_block.h"
+#include "nimble_kokkos_defs.h"
+#include "nimble_kokkos_profiling.h"
+#include "nimble_parser.h"
 
-
-namespace nimble {
-
-enum class FieldID : char {
-  FailFlag = -1,
-  Acceleration,
-  ContactForce,
-  DeformationGradient,
-  Displacement,
-  InternalForce,
-  LumpedMass,
-  ReferenceCoordinate,
-  Stress,
-  UnrotatedStress,
-  Velocity,
-  Volume
-};
-
-static std::map< nimble::FieldID, std::string > fieldToLabel =
-    {
-        {FieldID::Acceleration, "acceleration"},
-        {FieldID::ContactForce, "contact_force"},
-        {FieldID::DeformationGradient, "deformation_gradient"},
-        {FieldID::Displacement, "displacement"},
-        {FieldID::InternalForce, "internal_force"},
-        {FieldID::LumpedMass, "lumped_mass"},
-        {FieldID::ReferenceCoordinate, "reference_coordinate"},
-        {FieldID::Stress, "stress"},
-        {FieldID::UnrotatedStress, "unrotated_stress"},
-        {FieldID::Velocity, "velocity"},
-        {FieldID::Volume, "volume"}
-    };
-
-static nimble::FieldID GetFieldID(const std::string &label) {
-  for (const auto& ipair : fieldToLabel) {
-    auto myLabel = ipair.second;
-    if (myLabel == label)
-      return ipair.first;
-  }
-  return FieldID::FailFlag;
-}
-
-}
 
 namespace nimble_kokkos {
-
-class ExodusOutputManager;
-
-struct FieldIds {
-  int deformation_gradient = -1;
-  int stress = -1;
-  int unrotated_stress = -1;
-
-  int reference_coordinates = -1;
-  int displacement = -1;
-  int velocity = -1;
-  int acceleration = -1;
-
-  int lumped_mass = -1;
-  int internal_force = -1;
-  int contact_force = -1;
-};
 
 class ModelData : public nimble::BaseModelData
 {
@@ -132,12 +76,12 @@ class ModelData : public nimble::BaseModelData
 
   void AllocateNodeData(nimble::Length length,
                         nimble::FieldID field,
-                        int num_objects);
+                        int num_objects) override;
 
   void AllocateElementData(int block_id,
                            nimble::Length length,
                            nimble::FieldID field,
-                           int num_objects);
+                           int num_objects) override;
 
 protected:
 
@@ -152,7 +96,7 @@ public:
                                     nimble::Length length,
                                     nimble::FieldID field,
                                     int num_objects,
-                                    std::vector<double> initial_value = std::vector<double>());
+                                    const std::vector<double> &initial_value) override;
 
   FieldIndex GetFieldId(const std::string& field_label) const override
   { return field_label_to_field_id_map_.at(field_label); }
@@ -261,6 +205,46 @@ public:
 
   HostScalarNodeView GetHostScalarNodeData(nimble::FieldID field);
 
+  ModelData() = default;
+
+  ~ModelData() override = default;
+
+  void SwapStates() override;
+
+  void InitializeBlocks(const nimble::GenesisMesh &mesh,
+                        const nimble::Parser &parser,
+                        std::shared_ptr<nimble_kokkos::MaterialFactory> material_factory,
+                        bool store_unrotated_stress);
+
+  std::map<int, nimble_kokkos::Block> &GetBlocks() { return blocks_; }
+
+  std::map<int, nimble_kokkos::Block> const &GetBlocks() const { return blocks_; }
+
+  void SpecifyOutputFields(const std::string &output_field_string) override;
+
+  void UpdateOutputFields(const nimble::GenesisMesh &mesh,
+                          std::vector<nimble_kokkos::DeviceVectorNodeGatheredView> &gathered_reference_coordinate_d,
+                          std::vector<nimble_kokkos::DeviceVectorNodeGatheredView> &gathered_displacement_d);
+
+  void ComputeLumpedMass(const nimble::GenesisMesh &mesh,
+                         std::vector<nimble_kokkos::DeviceVectorNodeGatheredView> &gathered_reference_coordinate_d);
+
+  void ComputeElementKinematics(const nimble::GenesisMesh &mesh,
+                                std::vector<nimble_kokkos::DeviceVectorNodeGatheredView> &gathered_reference_coordinate_d,
+                                std::vector<nimble_kokkos::DeviceVectorNodeGatheredView> &gathered_displacement_d,
+                                std::vector<nimble_kokkos::DeviceVectorNodeGatheredView> &gathered_internal_force_d);
+
+  void ComputeInternalForce(const nimble::GenesisMesh &mesh,
+                            std::vector<nimble_kokkos::DeviceVectorNodeGatheredView> &gathered_reference_coordinate_d,
+                            std::vector<nimble_kokkos::DeviceVectorNodeGatheredView> &gathered_displacement_d,
+                            std::vector<nimble_kokkos::DeviceVectorNodeGatheredView> &gathered_internal_force_d);
+
+  std::vector< std::vector<double> > GetNodeDataForOutput()
+  { return exodus_output_manager_.GetNodeDataForOutput(this); }
+
+  std::map<int, std::vector< std::vector<double> > > GetElementDataForOutput()
+  { return exodus_output_manager_.GetElementDataForOutput(this); }
+
 protected:
 
   using Data = std::unique_ptr< FieldBase >;
@@ -271,6 +255,8 @@ protected:
   //--- Protected Variables
   //
 
+  nimble_kokkos::ExodusOutputManager exodus_output_manager_;
+
   std::map<std::string, FieldIndex> field_label_to_field_id_map_;
 
   std::vector< Data > host_node_data_;
@@ -278,6 +264,9 @@ protected:
 
   std::map<FieldIndex, Index> field_id_to_host_node_data_index_;
   std::map<FieldIndex, Index> field_id_to_device_node_data_index_;
+
+  std::map<int, nimble_kokkos::Block> blocks_;
+  std::vector<int> block_ids_;
 
   std::map<int, Index> block_id_to_element_data_index_;
   std::vector< std::vector< Data > > host_element_data_;
@@ -293,7 +282,18 @@ protected:
   std::vector< std::map< FieldIndex, Index> > field_id_to_host_integration_point_data_index_;
   std::vector< std::map< FieldIndex, Index> > field_id_to_device_integration_point_data_index_;
 
+  std::map<int, std::vector<std::string> > derived_elem_data_labels_;
+
+  nimble_kokkos::ProfilingTimer watch_simulation_;
+
+//  std::vector<nimble_kokkos::DeviceVectorNodeGatheredView> gathered_reference_coordinate_d;
+//  std::vector<nimble_kokkos::DeviceVectorNodeGatheredView> gathered_displacement_d;
+//  std::vector<nimble_kokkos::DeviceVectorNodeGatheredView> gathered_internal_force_d;
+
   friend class nimble_kokkos::ExodusOutputManager;
+
+  //// Function
+  void InitializeGatheredData(const nimble::GenesisMesh &mesh);
 
 public:
 
@@ -312,21 +312,6 @@ public:
                         int num_nodes_per_element,
                         const DeviceElementConnectivityView &elem_conn_d,
                         const DeviceVectorNodeGatheredView &gathered_view_d);
-};
-
-class DataManager {
-
-  public:
-
-    DataManager() {}
-
-    virtual ~DataManager() {}
-
-    ModelData& GetMacroScaleData();
-
- protected:
-
-    ModelData macroscale_data_;
 };
 
 } // namespace

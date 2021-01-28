@@ -46,9 +46,9 @@
 
 #include <map>
 #include <vector>
-#include <nimble_element.h>
-#include <nimble_kokkos_defs.h>
-#include <nimble_material.h>
+#include "nimble_element.h"
+#include "nimble_kokkos_defs.h"
+#include "nimble_material.h"
 
 #ifdef NIMBLE_HAVE_DARMA
   #include "darma.h"
@@ -74,12 +74,12 @@ namespace nimble_kokkos {
       /* Kokkos::parallel_for(1, KOKKOS_LAMBDA(int) { */
       /*     element_device_->~Element(); */
       /*   }); */
-      if (element_device_ != 0) {
-        Kokkos::kokkos_free(element_device_);
-      }
-      if (material_device_ != 0) {
-        Kokkos::kokkos_free(material_device_);
-      }
+//      if (element_device_ != nullptr) {
+//        Kokkos::kokkos_free(element_device_);
+//      }
+//      if (material_device_ != nullptr) {
+//        Kokkos::kokkos_free(material_device_);
+//      }
     }
 
     void Initialize(std::string const & macro_material_parameters,
@@ -108,21 +108,22 @@ namespace nimble_kokkos {
     nimble::Material* GetDeviceMaterialModel() { return material_device_; }
 
     DeviceElementConnectivityView& GetDeviceElementConnectivityView() { return elem_conn_d; }
+    DeviceElementConnectivityView GetD_ElementConnectivityView() { return elem_conn_d; }
 
     std::shared_ptr<nimble::NGPLAMEData> GetNGPLAMEData() { return ngp_lame_data_; }
 
-    double ComputeCriticalTimeStep(const double * const node_reference_coordinates,
-                                   const double * const node_displacements,
+    double ComputeCriticalTimeStep(const double * node_reference_coordinates,
+                                   const double * node_displacements,
                                    int num_elem,
-                                   const int * const elem_conn) const;
+                                   const int * elem_conn) const;
 
     template <typename MatT>
     void ComputeTangentStiffnessMatrix(int num_global_unknowns,
-                                       const double * const reference_coordinates,
-                                       const double * const displacement,
+                                       const double * reference_coordinates,
+                                       const double * displacement,
                                        int num_elem,
-                                       const int * const elem_conn,
-                                       const int * const global_node_ids,
+                                       const int * elem_conn,
+                                       const int * global_node_ids,
                                        MatT & tangent_stiffness) const ;
 
   private:

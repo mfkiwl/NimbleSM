@@ -60,23 +60,62 @@ namespace nimble { class MaterialFactory; }
 
 namespace nimble {
 
+#ifdef NIMBLE_HAVE_UQ
   class UqModel;//Forward declaration to avoid circular header inclusion
+#endif
 
-  class Block {
+  class BaseBlock {
 
   public:
 
-    Block() :
-      macro_material_parameters_("none"), 
-      vol_ave_volume_offset_(-1), 
+    BaseBlock() = default;
+
+    virtual ~BaseBlock() = default;
+
+    virtual void InstantiateElement() = 0;
+
+    virtual void GetDataLabelsAndLengths(
+        std::vector< std::pair<std::string, Length> >& data_labels_and_lengths)
+     = 0;
+
+    double GetDensity() const {
+      return material_->GetDensity();
+    }
+
+    double GetBulkModulus() const {
+      return material_->GetBulkModulus();
+    }
+
+    double GetShearModulus() const {
+      return material_->GetShearModulus();
+    }
+
+    std::shared_ptr<Material> GetMaterialPointer() const { return material_; }
+
+    std::shared_ptr<Element> GetElementPointer() const { return element_; }
+
+  protected:
+
+    std::string macro_material_parameters_ = std::string("none");
+    std::shared_ptr<Element> element_ = nullptr;
+    std::shared_ptr<Material> material_ = nullptr;
+
+  };
+
+  class Block : public BaseBlock {
+
+  public:
+
+    Block() : BaseBlock(),
+      vol_ave_volume_offset_(-1),
       rve_boundary_condition_strategy_("none") 
 #ifdef NIMBLE_HAVE_UQ
-      ,bulk_modulus_uq_index_(-1)
-      ,shear_modulus_uq_index_(-1)
+      , bulk_modulus_uq_index_(-1)
+      , shear_modulus_uq_index_(-1)
 #endif
       {}
 
-    virtual ~Block() { }
+    ~Block() override { }
 
 #ifdef NIMBLE_HAVE_DARMA
     template<typename ArchiveType>
@@ -122,33 +161,23 @@ namespace nimble {
                     std::string rve_boundary_condition_strategy,
                     MaterialFactory& factory);
 
+    void InstantiateElement() override;
+
     void InstantiateMaterialModel(MaterialFactory& factory);
 
-    void InstantiateElement();
+    void GetDataLabelsAndLengths(
+      std::vector< std::pair<std::string, Length> >& data_labels_and_lengths)
+      override;
 
-    void GetDataLabelsAndLengths(std::vector< std::pair<std::string, Length> >& data_labels_and_lengths);
-
-    double GetDensity() const {
-      return material_->GetDensity();
-    }
-
-    double GetBulkModulus() const {
-      return material_->GetBulkModulus();
-    }
-
-    double GetShearModulus() const {
-      return material_->GetShearModulus();
-    }
-
-    void ComputeLumpedMassMatrix(const double * const reference_coordinates,
+    void ComputeLumpedMassMatrix(const double * reference_coordinates,
                                  int num_elem,
-                                 const int * const elem_conn,
+                                 const int * elem_conn,
                                  double* lumped_mass) const ;
 
-    double ComputeCriticalTimeStep(const double * const node_reference_coordinates,
-                                   const double * const node_displacements,
+    double ComputeCriticalTimeStep(const double * node_reference_coordinates,
+                                   const double * node_displacements,
                                    int num_elem,
-                                   const int * const elem_conn) const;
+                                   const int * elem_conn) const;
 
     void InitializeElementData(int num_elem_in_block,
                                std::vector<int> const & elem_global_ids_in_block,
@@ -160,16 +189,16 @@ namespace nimble {
                                MaterialFactory& material_factory,
                                DataManager& data_manager);
 
-    void ComputeInternalForce(const double * const reference_coordinates,
-                              const double * const displacement,
-                              const double * const velocity,
-                              const double * const rve_macroscale_deformation_gradient,
-                              double * const internal_force,
+    void ComputeInternalForce(const double * reference_coordinates,
+                              const double * displacement,
+                              const double * velocity,
+                              const double * rve_macroscale_deformation_gradient,
+                              double * internal_force,
                               double time_previous,
                               double time_current,
                               int num_elem,
-                              const int * const elem_conn,
-                              const int * const elem_global_ids,
+                              const int * elem_conn,
+                              const int * elem_global_ids,
                               std::vector<std::string> const & elem_data_labels,
                               std::vector<double> const & elem_data_n,
                               std::vector<double> & elem_data_np1,
@@ -183,25 +212,21 @@ namespace nimble {
 
     template <typename MatT>
     void ComputeTangentStiffnessMatrix(int num_global_unknowns,
-                                       const double * const reference_coordinates,
-                                       const double * const displacement,
+                                       const double * reference_coordinates,
+                                       const double * displacement,
                                        int num_elem,
-                                       const int * const elem_conn,
-                                       const int * const global_node_ids,
+                                       const int * elem_conn,
+                                       const int * global_node_ids,
                                        MatT & tangent_stiffness) const ;
 
-    void ComputeDerivedElementData(const double * const reference_coordinates,
-                                   const double * const displacement,
+    void ComputeDerivedElementData(const double * reference_coordinates,
+                                   const double * displacement,
                                    int num_elem,
-                                   const int * const elem_conn,
+                                   const int * elem_conn,
                                    int num_elem_data,
                                    std::vector<double> const & elem_data_np1,
                                    int num_derived_elem_data,
                                    std::vector< std::vector<double> >& derived_elem_data);
-
-    std::shared_ptr<Material> const GetMaterialPointer() const { return material_; }
-
-    std::shared_ptr<Element> const GetElementPointer() const { return element_; }
 
 #ifdef NIMBLE_HAVE_UQ
     // HACK specific to elastic models
@@ -220,14 +245,11 @@ namespace nimble {
     void DetermineDataOffsets(std::vector<std::string> const & elem_data_labels,
                               std::vector<std::string> const & derived_elem_data_labels);
 
-    std::string macro_material_parameters_;
     std::map<int, std::string> rve_material_parameters_;
     std::string rve_boundary_condition_strategy_;
     std::vector<int> rve_output_global_elem_ids_;
     // todo: can we avoid carrying the rve_mesh around?
     GenesisMesh rve_mesh_;
-    std::shared_ptr<Element> element_ = nullptr;
-    std::shared_ptr<Material> material_ = nullptr;
     std::vector<int> def_grad_offset_;
     std::vector<int> stress_offset_;
     std::vector<int> state_data_offset_;

@@ -294,27 +294,32 @@ int NimbleMain(std::shared_ptr<MaterialFactoryType> material_factory,
   int num_blocks = static_cast<int>(mesh.GetNumBlocks());
 
   nimble::DataManager data_manager;
-  nimble::ModelData & model_data = data_manager.GetMacroScaleData();
-  model_data.SetDimension(dim);
+
+  // Temporary Solution
+  auto model_data = dynamic_cast<nimble::ModelData*>(data_manager.GetMacroScaleData().get());
+
+
+  model_data->SetDimension(dim);
 
   // Global data
   std::vector<std::string> global_data_labels;
 
-  int lumped_mass_field_id = model_data.AllocateNodeData(nimble::SCALAR, "lumped_mass", num_nodes);
-  int reference_coordinate_field_id = model_data.AllocateNodeData(nimble::VECTOR, "reference_coordinate", num_nodes);
-  int displacement_field_id = model_data.AllocateNodeData(nimble::VECTOR, "displacement", num_nodes);
-  int trial_displacement_field_id = model_data.AllocateNodeData(nimble::VECTOR, "trial_displacement", num_nodes);
-  int displacement_fluctuation_field_id = model_data.AllocateNodeData(nimble::VECTOR, "displacement_fluctuation", num_nodes);
-  int velocity_field_id = model_data.AllocateNodeData(nimble::VECTOR, "velocity", num_nodes);
-  int acceleration_field_id = model_data.AllocateNodeData(nimble::VECTOR, "acceleration", num_nodes);
-  int internal_force_field_id = model_data.AllocateNodeData(nimble::VECTOR, "internal_force", num_nodes);
-  int trial_internal_force_field_id = model_data.AllocateNodeData(nimble::VECTOR, "trial_internal_force", num_nodes);
-  int external_force_field_id = model_data.AllocateNodeData(nimble::VECTOR, "external_force", num_nodes);
-  int contact_force_field_id = model_data.AllocateNodeData(nimble::VECTOR, "contact_force", num_nodes);
-  int skin_node_field_id = model_data.AllocateNodeData(nimble::SCALAR, "skin_node", num_nodes);
+  int lumped_mass_field_id = model_data->AllocateNodeData(nimble::SCALAR, "lumped_mass", num_nodes);
+  int reference_coordinate_field_id = model_data->AllocateNodeData(nimble::VECTOR, "reference_coordinate", num_nodes);
+  int displacement_field_id = model_data->AllocateNodeData(nimble::VECTOR, "displacement", num_nodes);
+  int trial_displacement_field_id = model_data->AllocateNodeData(nimble::VECTOR, "trial_displacement", num_nodes);
+  int displacement_fluctuation_field_id = model_data->AllocateNodeData(nimble::VECTOR, "displacement_fluctuation", num_nodes);
+  int velocity_field_id = model_data->AllocateNodeData(nimble::VECTOR, "velocity", num_nodes);
+  int acceleration_field_id = model_data->AllocateNodeData(nimble::VECTOR, "acceleration", num_nodes);
+  int internal_force_field_id = model_data->AllocateNodeData(nimble::VECTOR, "internal_force", num_nodes);
+  int trial_internal_force_field_id = model_data->AllocateNodeData(nimble::VECTOR, "trial_internal_force", num_nodes);
+  int external_force_field_id = model_data->AllocateNodeData(nimble::VECTOR, "external_force", num_nodes);
+  int contact_force_field_id = model_data->AllocateNodeData(nimble::VECTOR, "contact_force", num_nodes);
+  int skin_node_field_id = model_data->AllocateNodeData(nimble::SCALAR, "skin_node", num_nodes);
 
   // Blocks
-  std::map<int, nimble::Block>& blocks = model_data.GetBlocks();
+  ///////////////
+  std::map<int, nimble::Block>& blocks = model_data->GetBlocks();
   std::map<int, nimble::Block>::iterator block_it;
   std::vector<int> block_ids = mesh.GetBlockIds();
   for (int i=0 ; i<num_blocks ; i++){
@@ -326,7 +331,7 @@ int NimbleMain(std::shared_ptr<MaterialFactoryType> material_factory,
     blocks[block_id].Initialize(macro_material_parameters, rve_material_parameters, rve_mesh, rve_bc_strategy, *material_factory);
     std::vector< std::pair<std::string, nimble::Length> > data_labels_and_lengths;
     blocks[block_id].GetDataLabelsAndLengths(data_labels_and_lengths);
-    model_data.DeclareElementData(block_id, data_labels_and_lengths);
+    model_data->DeclareElementData(block_id, data_labels_and_lengths);
   }
 
 #ifdef NIMBLE_HAVE_UQ
@@ -347,11 +352,13 @@ int NimbleMain(std::shared_ptr<MaterialFactoryType> material_factory,
 #endif
 
   std::map<int, int> num_elem_in_each_block = mesh.GetNumElementsInBlock();
-  model_data.AllocateElementData(num_elem_in_each_block);
-  model_data.SpecifyOutputFields(parser.GetOutputFieldString());
-  std::map<int, std::vector<std::string> > const & elem_data_labels = model_data.GetElementDataLabels();
-  std::map<int, std::vector<std::string> > const & elem_data_labels_for_output = model_data.GetElementDataLabelsForOutput();
-  std::map<int, std::vector<std::string> > const & derived_elem_data_labels = model_data.GetDerivedElementDataLabelsForOutput();
+  model_data->AllocateElementData(num_elem_in_each_block);
+  ///////////////
+
+  model_data->SpecifyOutputFields(parser.GetOutputFieldString());
+  std::map<int, std::vector<std::string> > const & elem_data_labels = model_data->GetElementDataLabels();
+  std::map<int, std::vector<std::string> > const & elem_data_labels_for_output = model_data->GetElementDataLabelsForOutput();
+  std::map<int, std::vector<std::string> > const & derived_elem_data_labels = model_data->GetDerivedElementDataLabelsForOutput();
 
   // Initialize the element data
   std::vector<int> rve_output_elem_ids = parser.MicroscaleOutputElementIds();
@@ -360,8 +367,8 @@ int NimbleMain(std::shared_ptr<MaterialFactoryType> material_factory,
     int num_elem_in_block = mesh.GetNumElementsInBlock(block_id);
     std::vector<int> const & elem_global_ids = mesh.GetElementGlobalIdsInBlock(block_id);
     nimble::Block& block = block_it->second;
-    std::vector<double> & elem_data_n = model_data.GetElementDataOld(block_id);
-    std::vector<double> & elem_data_np1 = model_data.GetElementDataNew(block_id);
+    std::vector<double> & elem_data_n = model_data->GetElementDataOld(block_id);
+    std::vector<double> & elem_data_np1 = model_data->GetElementDataNew(block_id);
     block.InitializeElementData(num_elem_in_block,
                                 elem_global_ids,
                                 rve_output_elem_ids,
@@ -384,33 +391,14 @@ int NimbleMain(std::shared_ptr<MaterialFactoryType> material_factory,
   // Initialize the output file
   nimble::ExodusOutput exodus_output;
   exodus_output.Initialize(output_exodus_name, mesh);
-  std::vector<std::string> const & node_data_labels_for_output = model_data.GetNodeDataLabelsForOutput();
+  std::vector<std::string> const & node_data_labels_for_output = model_data->GetNodeDataLabelsForOutput();
   exodus_output.InitializeDatabase(mesh,
                                    global_data_labels,
                                    node_data_labels_for_output,
                                    elem_data_labels_for_output,
                                    derived_elem_data_labels);
 
-  const double * const ref_coord_x = mesh.GetCoordinatesX();
-  const double * const ref_coord_y = mesh.GetCoordinatesY();
-  const double * const ref_coord_z = mesh.GetCoordinatesZ();
-  auto reference_coordinate = Viewify(model_data.GetNodeData(reference_coordinate_field_id), dim);
-  if (dim == 2) {
-    for (int i=0 ; i<num_nodes ; i++) {
-      reference_coordinate(i, 0) = ref_coord_x[i];
-      reference_coordinate(i, 1) = ref_coord_y[i];
-    }
-  }
-  else if (dim == 3) {
-    for (int i=0 ; i<num_nodes ; i++) {
-      reference_coordinate(i, 0) = ref_coord_x[i];
-      reference_coordinate(i, 1) = ref_coord_y[i];
-      reference_coordinate(i, 2) = ref_coord_z[i];
-    }
-  }
-  else {
-    throw std::runtime_error(" -- Inappropriate Spatial Dimension");
-  }
+  model_data->SetReferenceCoordinates(mesh);
 
 #ifdef NIMBLE_HAVE_TRILINOS
   auto comm = (parser.UseTpetra()) ? Tpetra::getDefaultComm()
@@ -562,28 +550,28 @@ int ExplicitTimeIntegrator(
 
   std::vector<double> global_data;
   
-  nimble::ModelData & model_data = data_manager.GetMacroScaleData();
+  auto model_data = dynamic_cast< nimble::ModelData*>(data_manager.GetMacroScaleData().get());
 
-  int lumped_mass_field_id = model_data.GetFieldId("lumped_mass");
-  int reference_coordinate_field_id = model_data.GetFieldId("reference_coordinate");
-  int displacement_field_id = model_data.GetFieldId("displacement");
-  int velocity_field_id =  model_data.GetFieldId("velocity");
-  int acceleration_field_id =  model_data.GetFieldId("acceleration");
-  int internal_force_field_id =  model_data.GetFieldId("internal_force");
-  int external_force_field_id =  model_data.GetFieldId("external_force");
-  int contact_force_field_id =  model_data.GetFieldId("contact_force");
+  int lumped_mass_field_id = model_data->GetFieldId("lumped_mass");
+  int reference_coordinate_field_id = model_data->GetFieldId("reference_coordinate");
+  int displacement_field_id = model_data->GetFieldId("displacement");
+  int velocity_field_id =  model_data->GetFieldId("velocity");
+  int acceleration_field_id =  model_data->GetFieldId("acceleration");
+  int internal_force_field_id =  model_data->GetFieldId("internal_force");
+  int external_force_field_id =  model_data->GetFieldId("external_force");
+  int contact_force_field_id =  model_data->GetFieldId("contact_force");
 
   int status = 0;
   // Set up the global vectors
   unsigned int num_unknowns = num_nodes * mesh.GetDim();
-  double* lumped_mass = model_data.GetNodeData(lumped_mass_field_id);
-  double* reference_coordinate = model_data.GetNodeData(reference_coordinate_field_id);
-  double* displacement = model_data.GetNodeData(displacement_field_id);
-  double* velocity = model_data.GetNodeData(velocity_field_id);
-  double* acceleration = model_data.GetNodeData(acceleration_field_id);
-  double* internal_force = model_data.GetNodeData(internal_force_field_id);
-  double* external_force = model_data.GetNodeData(external_force_field_id);
-  double* contact_force = model_data.GetNodeData(contact_force_field_id);
+  double* lumped_mass = model_data->GetNodeData(lumped_mass_field_id);
+  double* reference_coordinate = model_data->GetNodeData(reference_coordinate_field_id);
+  double* displacement = model_data->GetNodeData(displacement_field_id);
+  double* velocity = model_data->GetNodeData(velocity_field_id);
+  double* acceleration = model_data->GetNodeData(acceleration_field_id);
+  double* internal_force = model_data->GetNodeData(internal_force_field_id);
+  double* external_force = model_data->GetNodeData(external_force_field_id);
+  double* contact_force = model_data->GetNodeData(contact_force_field_id);
 
 #ifdef NIMBLE_HAVE_UQ
   std::vector<Viewify> bc_offnom_velocity_views(0);
@@ -598,13 +586,13 @@ int ExplicitTimeIntegrator(
   }
 #endif
 
-  std::map<int, std::vector<std::string> > const & elem_data_labels = model_data.GetElementDataLabels();
-  std::map<int, std::vector<std::string> > const & elem_data_labels_for_output = model_data.GetElementDataLabelsForOutput();
-  std::map<int, std::vector<std::string> > const & derived_elem_data_labels = model_data.GetDerivedElementDataLabelsForOutput();
+  auto elem_data_labels = model_data->GetElementDataLabels();
+  auto elem_data_labels_for_output = model_data->GetElementDataLabelsForOutput();
+  auto derived_elem_data_labels = model_data->GetDerivedElementDataLabelsForOutput();
 
   // Computed the lumped mass matrix (diagonal matrix) and the critical time step
   double critical_time_step = std::numeric_limits<double>::max();
-  std::map<int, nimble::Block>& blocks = model_data.GetBlocks();
+  std::map<int, nimble::Block>& blocks = model_data->GetBlocks();
   std::map<int, nimble::Block>::iterator block_it;
   for (block_it=blocks.begin(); block_it!=blocks.end() ; block_it++) {
     int block_id = block_it->first;
@@ -654,13 +642,16 @@ int ExplicitTimeIntegrator(
     rve_macroscale_deformation_gradient[i] = 1.0;
   }
 
+  //
+  // Output to Exodus file
+  //
   std::map<int, std::vector< std::vector<double> > > derived_elem_data;
   for (block_it=blocks.begin(); block_it!=blocks.end() ; block_it++) {
     int block_id = block_it->first;
     nimble::Block& block = block_it->second;
     int num_elem_in_block = mesh.GetNumElementsInBlock(block_id);
     int const * elem_conn = mesh.GetConnectivity(block_id);
-    std::vector<double> const & elem_data_np1 = model_data.GetElementDataNew(block_id);
+    std::vector<double> const & elem_data_np1 = model_data->GetElementDataNew(block_id);
     derived_elem_data[block_id] = std::vector< std::vector<double> >();
     block.ComputeDerivedElementData(reference_coordinate,
                                     displacement,
@@ -671,10 +662,11 @@ int ExplicitTimeIntegrator(
                                     derived_elem_data_labels.at(block_id).size(),
                                     derived_elem_data.at(block_id));
   }
+  
   std::vector< std::vector<double> > node_data_for_output;
-  model_data.GetNodeDataForOutput(node_data_for_output);
+  model_data->GetNodeDataForOutput(node_data_for_output);
   std::map<int, std::vector< std::vector<double> > > elem_data_for_output;
-  model_data.GetElementDataForOutput(elem_data_for_output);
+  model_data->GetElementDataForOutput(elem_data_for_output);
   exodus_output.WriteStep(time_current,
                           global_data,
                           node_data_for_output,
@@ -774,8 +766,8 @@ int ExplicitTimeIntegrator(
       int const * elem_conn = mesh.GetConnectivity(block_id);
       std::vector<int> const & elem_global_ids = mesh.GetElementGlobalIdsInBlock(block_id);
       nimble::Block& block = block_it->second;
-      std::vector<double> const & elem_data_n = model_data.GetElementDataOld(block_id);
-      std::vector<double> & elem_data_np1 = model_data.GetElementDataNew(block_id);
+      std::vector<double> const & elem_data_n = model_data->GetElementDataOld(block_id);
+      std::vector<double> & elem_data_np1 = model_data->GetElementDataNew(block_id);
 #ifdef NIMBLE_HAVE_UQ
       if(uq_model.Initialized()) {
          int num_exact_samples = uq_model.GetNumExactSamples();
@@ -895,7 +887,7 @@ int ExplicitTimeIntegrator(
         nimble::Block& block = block_it->second;
         int num_elem_in_block = mesh.GetNumElementsInBlock(block_id);
         int const * elem_conn = mesh.GetConnectivity(block_id);
-        std::vector<double> const & elem_data_np1 = model_data.GetElementDataNew(block_id);
+        std::vector<double> const & elem_data_np1 = model_data->GetElementDataNew(block_id);
         block.ComputeDerivedElementData(reference_coordinate,
                                         displacement,
                                         num_elem_in_block,
@@ -913,8 +905,8 @@ int ExplicitTimeIntegrator(
                          );
 
       // Write output
-      model_data.GetNodeDataForOutput(node_data_for_output);
-      model_data.GetElementDataForOutput(elem_data_for_output);
+      model_data->GetNodeDataForOutput(node_data_for_output);
+      model_data->GetElementDataForOutput(elem_data_for_output);
       exodus_output.WriteStep(time_current,
                               global_data,
                               node_data_for_output,
@@ -945,7 +937,7 @@ int ExplicitTimeIntegrator(
     }
 #endif
 
-    model_data.SwapStates();
+    model_data->SwapStates();
     total_step_time.Stop();
   }
 
@@ -1025,27 +1017,27 @@ int QuasistaticTimeIntegrator(const nimble::Parser &parser,
 
   std::vector<double> global_data;
 
-  nimble::ModelData &model_data = data_manager.GetMacroScaleData();
+  auto model_data = dynamic_cast<nimble::ModelData*>(data_manager.GetMacroScaleData().get());
 
-  int reference_coordinate_field_id = model_data.GetFieldId("reference_coordinate");
-  int displacement_field_id = model_data.GetFieldId("displacement");
-  int trial_displacement_field_id = model_data.GetFieldId("trial_displacement");
-  int displacement_fluctuation_field_id = model_data.GetFieldId("displacement_fluctuation");
-  int velocity_field_id =  model_data.GetFieldId("velocity");
-  int internal_force_field_id =  model_data.GetFieldId("internal_force");
-  int trial_internal_force_field_id =  model_data.GetFieldId("trial_internal_force");
-  int external_force_field_id =  model_data.GetFieldId("external_force");
+  int reference_coordinate_field_id = model_data->GetFieldId("reference_coordinate");
+  int displacement_field_id = model_data->GetFieldId("displacement");
+  int trial_displacement_field_id = model_data->GetFieldId("trial_displacement");
+  int displacement_fluctuation_field_id = model_data->GetFieldId("displacement_fluctuation");
+  int velocity_field_id =  model_data->GetFieldId("velocity");
+  int internal_force_field_id =  model_data->GetFieldId("internal_force");
+  int trial_internal_force_field_id =  model_data->GetFieldId("trial_internal_force");
+  int external_force_field_id =  model_data->GetFieldId("external_force");
 
   // Set up the global vectors
   unsigned int num_unknowns = num_nodes * mesh.GetDim();
-  double* reference_coordinate = model_data.GetNodeData(reference_coordinate_field_id);
-  double* physical_displacement = model_data.GetNodeData(displacement_field_id);
-  double* trial_displacement = model_data.GetNodeData(trial_displacement_field_id);
-  double* displacement_fluctuation = model_data.GetNodeData(displacement_fluctuation_field_id);
-  double* velocity = model_data.GetNodeData(velocity_field_id);
-  double* internal_force = model_data.GetNodeData(internal_force_field_id);
-  double* trial_internal_force = model_data.GetNodeData(trial_internal_force_field_id);
-  double* external_force = model_data.GetNodeData(external_force_field_id);
+  double* reference_coordinate = model_data->GetNodeData(reference_coordinate_field_id);
+  double* physical_displacement = model_data->GetNodeData(displacement_field_id);
+  double* trial_displacement = model_data->GetNodeData(trial_displacement_field_id);
+  double* displacement_fluctuation = model_data->GetNodeData(displacement_fluctuation_field_id);
+  double* velocity = model_data->GetNodeData(velocity_field_id);
+  double* internal_force = model_data->GetNodeData(internal_force_field_id);
+  double* trial_internal_force = model_data->GetNodeData(trial_internal_force_field_id);
+  double* external_force = model_data->GetNodeData(external_force_field_id);
 
   std::vector<double> residual_vector(linear_system_num_unknowns, 0.0);
   std::vector<double> trial_residual_vector(linear_system_num_unknowns, 0.0);
@@ -1071,9 +1063,9 @@ int QuasistaticTimeIntegrator(const nimble::Parser &parser,
 //  }
 #endif
 
-  std::map<int, std::vector<std::string> > const & elem_data_labels = model_data.GetElementDataLabels();
-  std::map<int, std::vector<std::string> > const & elem_data_labels_for_output = model_data.GetElementDataLabelsForOutput();
-  std::map<int, std::vector<std::string> > const & derived_elem_data_labels = model_data.GetDerivedElementDataLabelsForOutput();
+  std::map<int, std::vector<std::string> > const & elem_data_labels = model_data->GetElementDataLabels();
+  std::map<int, std::vector<std::string> > const & elem_data_labels_for_output = model_data->GetElementDataLabelsForOutput();
+  std::map<int, std::vector<std::string> > const & derived_elem_data_labels = model_data->GetDerivedElementDataLabelsForOutput();
 
   double time_current(0.0), time_previous(0.0), delta_time(0.0);
   double final_time = parser.FinalTime();
@@ -1102,14 +1094,14 @@ int QuasistaticTimeIntegrator(const nimble::Parser &parser,
     rve_center = mesh.BoundingBoxCenter();
   }
 
-  std::map<int, nimble::Block>& blocks = model_data.GetBlocks();
+  std::map<int, nimble::Block>& blocks = model_data->GetBlocks();
   std::map<int, std::vector< std::vector<double> > > derived_elem_data;
   for (auto& block_it : blocks) {
     int block_id = block_it.first;
     nimble::Block& block = block_it.second;
     int num_elem_in_block = mesh.GetNumElementsInBlock(block_id);
     int const * elem_conn = mesh.GetConnectivity(block_id);
-    std::vector<double> const & elem_data_np1 = model_data.GetElementDataNew(block_id);
+    std::vector<double> const & elem_data_np1 = model_data->GetElementDataNew(block_id);
     derived_elem_data[block_id] = std::vector< std::vector<double> >();
     block.ComputeDerivedElementData(reference_coordinate,
                                     displacement,
@@ -1121,9 +1113,9 @@ int QuasistaticTimeIntegrator(const nimble::Parser &parser,
                                     derived_elem_data.at(block_id));
   }
   std::vector< std::vector<double> > node_data_for_output;
-  model_data.GetNodeDataForOutput(node_data_for_output);
+  model_data->GetNodeDataForOutput(node_data_for_output);
   std::map<int, std::vector< std::vector<double> > > elem_data_for_output;
-  model_data.GetElementDataForOutput(elem_data_for_output);
+  model_data->GetElementDataForOutput(elem_data_for_output);
   exodus_output.WriteStep(time_current,
                           global_data,
                           node_data_for_output,
@@ -1365,7 +1357,7 @@ int QuasistaticTimeIntegrator(const nimble::Parser &parser,
           nimble::Block& block = block_it.second;
           int num_elem_in_block = mesh.GetNumElementsInBlock(block_id);
           int const * elem_conn = mesh.GetConnectivity(block_id);
-          std::vector<double> const & elem_data_np1 = model_data.GetElementDataNew(block_id);
+          std::vector<double> const & elem_data_np1 = model_data->GetElementDataNew(block_id);
           block.ComputeDerivedElementData(reference_coordinate,
                                           displacement,
                                           num_elem_in_block,
@@ -1377,8 +1369,8 @@ int QuasistaticTimeIntegrator(const nimble::Parser &parser,
         }
 
         // Write output
-        model_data.GetNodeDataForOutput(node_data_for_output);
-        model_data.GetElementDataForOutput(elem_data_for_output);
+        model_data->GetNodeDataForOutput(node_data_for_output);
+        model_data->GetElementDataForOutput(elem_data_for_output);
         exodus_output.WriteStep(time_current,
                                 global_data,
                                 node_data_for_output,
@@ -1391,7 +1383,7 @@ int QuasistaticTimeIntegrator(const nimble::Parser &parser,
     }
 
     // swap states
-    model_data.SwapStates();
+    model_data->SwapStates();
 
   }
 
@@ -1419,9 +1411,10 @@ double ComputeQuasistaticResidual(nimble::GenesisMesh & mesh,
                                   double const * rve_macroscale_deformation_gradient,
                                   bool is_output_step) {
 
-  nimble::ModelData & macroscale_data = data_manager.GetMacroScaleData();
-  std::map<int, nimble::Block>& blocks = macroscale_data.GetBlocks();
-  std::map<int, std::vector<std::string> > const & elem_data_labels = macroscale_data.GetElementDataLabels();
+  auto model_data = dynamic_cast<nimble::ModelData*>(data_manager.GetMacroScaleData().get());
+
+  std::map<int, nimble::Block>& blocks = model_data->GetBlocks();
+  std::map<int, std::vector<std::string> > const & elem_data_labels = model_data->GetElementDataLabels();
   int dim = mesh.GetDim();
   int num_nodes = static_cast<int>(mesh.GetNumNodes());
   int num_unknowns = num_nodes * mesh.GetDim();
@@ -1441,8 +1434,8 @@ double ComputeQuasistaticResidual(nimble::GenesisMesh & mesh,
     int const * elem_conn = mesh.GetConnectivity(block_id);
     std::vector<int> const & elem_global_ids = mesh.GetElementGlobalIdsInBlock(block_id);
     nimble::Block& block = block_it.second;
-    std::vector<double> const & elem_data_n = macroscale_data.GetElementDataOld(block_id);
-    std::vector<double> & elem_data_np1 = macroscale_data.GetElementDataNew(block_id);
+    std::vector<double> const & elem_data_n = model_data->GetElementDataOld(block_id);
+    std::vector<double> & elem_data_np1 = model_data->GetElementDataNew(block_id);
     block.ComputeInternalForce(reference_coordinate,
                                displacement,
                                velocity,

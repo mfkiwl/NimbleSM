@@ -58,7 +58,11 @@ int main(int argc, char *argv[]) {
     std::shared_ptr<nimble_kokkos::BlockMaterialInterfaceFactory> block_material_interface_factory(new nimble_kokkos::BlockMaterialInterfaceFactory);
     std::shared_ptr<nimble::Parser> parser(new nimble::Parser);
 
-    nimble::NimbleKokkosMain(material_factory, contact_interface, block_material_interface_factory, parser, init_data);
+    nimble::NimbleKokkosMain(material_factory,
+                             contact_interface,
+                             block_material_interface_factory,
+                             parser,
+                             init_data);
   }
 
   int status = nimble::NimbleKokkosFinalize(init_data);

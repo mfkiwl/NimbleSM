@@ -41,7 +41,10 @@
 //@HEADER
 */
 
-#include "nimble_kokkos_data_manager.h"
+#include "nimble_kokkos_data.h"
+#include "nimble_genesis_mesh.h"
+#include "nimble_parser.h"
+
 #include <stdexcept>
 
 #include <Kokkos_ScatterView.hpp>
@@ -188,7 +191,7 @@ void ModelData::AllocateIntegrationPointData(int block_id,
                                             nimble::Length length,
                                             nimble::FieldID field,
                                             int num_objects,
-                                            std::vector<double> initial_value) {
+                                            const std::vector<double> &initial_value) {
   bool set_initial_value = (!initial_value.empty());
   auto label = nimble::fieldToLabel[field];
   auto myFieldIndex = MapToFieldIndex(label);
@@ -641,10 +644,16 @@ DeviceVectorNodeGatheredView ModelData::GatherVectorNodeData(ModelData::FieldInd
   auto base_field_ptr = device_node_data_.at(index).get();
   auto derived_field_ptr = dynamic_cast< Field< FieldType::DeviceVectorNode >* >(base_field_ptr);
   auto data = derived_field_ptr->data();
+  std::cout << " gathered_view_d " << gathered_view_d.extent(0) << " "
+      << gathered_view_d.extent(1) <<  " "
+      << gathered_view_d.extent(2) << "\n";
   Kokkos::parallel_for("GatherVectorNodeData", num_elements, KOKKOS_LAMBDA (const int i_elem) {
     for (int i_node=0 ; i_node < num_nodes_per_element ; i_node++) {
+      std::cout << " i_node " << i_node << "\n";
       int node_index = elem_conn_d(num_nodes_per_element*i_elem + i_node);
+      std::cout << " node_index " << node_index << "\n";
       for (int i_coord=0 ; i_coord < 3 ; i_coord++) {
+        std::cout << " i_coord " << i_coord << "\n";
         gathered_view_d(i_elem, i_node, i_coord) = data(node_index, i_coord);
       }
     }
@@ -759,8 +768,323 @@ void ModelData::ScatterScalarNodeDataUsingKokkosScatterView(ModelData::FieldInde
 }
 #endif
 
-  ModelData& DataManager::GetMacroScaleData() {
-    return macroscale_data_;
+void ModelData::SwapStates() {
+
+  // Copy STEP_NP1 data to STEP_N
+  for (auto iter : output_element_component_labels_)
+  {
+    auto block_id = iter.first;
+    auto deformation_gradient_step_n_d = GetDeviceFullTensorIntegrationPointData(
+        block_id, nimble::FieldID::DeformationGradient, nimble::STEP_N);
+    //------------
+//      auto unrotated_stress_step_n_d = model_data.GetDeviceSymTensorIntegrationPointData(block_id,
+//                                                                                         nimble::FieldID::UnrotatedStress,
+//                                                                                         nimble::STEP_N);
+    //------------
+    auto stress_step_n_d = GetDeviceSymTensorIntegrationPointData(block_id, nimble::FieldID::Stress,
+                                                                             nimble::STEP_N);
+    auto deformation_gradient_step_np1_d = GetDeviceFullTensorIntegrationPointData(
+        block_id, nimble::FieldID::DeformationGradient, nimble::STEP_NP1);
+    //------------
+//      auto unrotated_stress_step_np1_d = model_data.GetDeviceSymTensorIntegrationPointData(block_id,
+//                                                                                           nimble::FieldID::UnrotatedStress,
+//                                                                                           nimble::STEP_NP1);
+    //------------
+    auto stress_step_np1_d = GetDeviceSymTensorIntegrationPointData(block_id, nimble::FieldID::Stress,
+                                                                               nimble::STEP_NP1);
+    Kokkos::deep_copy(deformation_gradient_step_n_d, deformation_gradient_step_np1_d);
+    //------------
+//      Kokkos::deep_copy(unrotated_stress_step_n_d, unrotated_stress_step_np1_d);
+    //------------
+    Kokkos::deep_copy(stress_step_n_d, stress_step_np1_d);
   }
 
-} // namespace nimble
+}
+
+void ModelData::InitializeBlocks(const nimble::GenesisMesh &mesh,
+                                 const nimble::Parser &parser,
+                                 std::shared_ptr<nimble_kokkos::MaterialFactory> material_factory,
+                                 bool store_unrotated_stress)
+{
+
+  block_ids_ = mesh.GetBlockIds();
+  int num_blocks = static_cast<int>(mesh.GetNumBlocks());
+
+  for (int i=0 ; i<num_blocks ; i++){
+    int block_id = block_ids_.at(i);
+    std::string const & macro_material_parameters = parser.GetMacroscaleMaterialParameters(block_id);
+    std::map<int, std::string> const & rve_material_parameters = parser.GetMicroscaleMaterialParameters();
+    std::string rve_bc_strategy = parser.GetMicroscaleBoundaryConditionStrategy();
+    int num_elements_in_block = mesh.GetNumElementsInBlock(block_id);
+    blocks_[block_id] = nimble_kokkos::Block();
+    blocks_.at(block_id).Initialize(macro_material_parameters, num_elements_in_block,
+                                    *material_factory);
+    //
+    std::vector<double> initial_value(9, 0.0);
+    initial_value[0] = initial_value[1] = initial_value[2] = 1.0;
+    AllocateIntegrationPointData(block_id, nimble::FULL_TENSOR,
+                                 nimble::FieldID::DeformationGradient,
+                                 num_elements_in_block, initial_value);
+    // volume-averaged quantities for I/O are stored as element data
+    AllocateElementData(block_id, nimble::FULL_TENSOR,
+                        nimble::FieldID::DeformationGradient, num_elements_in_block);
+
+    nimble::BaseModelData::AllocateIntegrationPointData(block_id, nimble::SYMMETRIC_TENSOR,
+                                 nimble::FieldID::Stress, num_elements_in_block);
+    if (store_unrotated_stress) {
+      nimble::BaseModelData::AllocateIntegrationPointData(block_id, nimble::SYMMETRIC_TENSOR,
+                                                          nimble::FieldID::UnrotatedStress,
+                                                          num_elements_in_block);
+    }
+
+    // volume-averaged quantities for I/O are stored as element data
+    AllocateElementData(block_id, nimble::SYMMETRIC_TENSOR,
+                        nimble::FieldID::Stress, num_elements_in_block);
+
+    if (parser.GetOutputFieldString().find("volume") != std::string::npos) {
+      AllocateElementData(block_id, nimble::SCALAR, nimble::FieldID::Volume,
+                          num_elements_in_block);
+    }
+  }
+
+}
+
+
+void ModelData::SpecifyOutputFields(const std::string &output_field_string)
+{
+
+  // Initialize the exodus-output-manager
+  exodus_output_manager_.SpecifyOutputFields(this, output_field_string);
+
+  output_node_component_labels_= exodus_output_manager_.GetNodeDataLabelsForOutput();
+  output_element_component_labels_ = exodus_output_manager_.GetElementDataLabelsForOutput();
+
+  for (auto id : block_ids_) {
+    derived_output_element_data_labels_[id] = std::vector<std::string>(); // TODO eliminate this
+  }
+
+}
+
+
+void ModelData::ComputeLumpedMass(const nimble::GenesisMesh &mesh,
+                                  std::vector<nimble_kokkos::DeviceVectorNodeGatheredView> &gathered_reference_coordinate_d)
+{
+
+  int num_blocks = static_cast<int>(mesh.GetNumBlocks());
+
+  InitializeGatheredData(mesh);
+
+  std::vector<nimble_kokkos::DeviceScalarNodeGatheredView> gathered_lumped_mass_d(num_blocks,
+                                                                                  nimble_kokkos::DeviceScalarNodeGatheredView("gathred_lumped_mass", 1));
+
+  auto lumped_mass_h = GetHostScalarNodeData(nimble::FieldID::LumpedMass);
+
+  watch_simulation_.push_region("Lumped mass gather and compute");
+
+  //
+  // Prepare to compute the lumped mass
+  //
+
+  int block_index = 0;
+  for (block_index = 0; block_index < block_ids_.size(); ++block_index) {
+    int block_id = block_ids_[block_index];
+    int num_elem_in_block = mesh.GetNumElementsInBlock(block_id);
+    Kokkos::resize(gathered_lumped_mass_d.at(block_index), num_elem_in_block);
+    Kokkos::resize(gathered_reference_coordinate_d.at(block_index),
+                   num_elem_in_block);
+  }
+
+  watch_simulation_.push_region("Lumped mass gather and compute");
+
+  auto lumped_mass_d = GetDeviceScalarNodeData(nimble::FieldID::LumpedMass);
+  Kokkos::deep_copy(lumped_mass_h, (double)(0.0));
+  Kokkos::deep_copy(lumped_mass_d, (double)(0.0));
+
+  nimble_kokkos::DeviceVectorNodeView reference_coordinate_d =
+      GetDeviceVectorNodeData(nimble::FieldID::ReferenceCoordinate);
+
+  // Compute the lumped mass
+  block_index = 0;
+  for (auto &block_it : blocks_) {
+    int block_id = block_it.first;
+    auto &block = block_it.second;
+    nimble::Element *element_d = block.GetDeviceElement();
+    const double density = block.GetDensity();
+    const int num_elem_in_block = mesh.GetNumElementsInBlock(block_id);
+    const int num_nodes_per_elem = mesh.GetNumNodesPerElement(block_id);
+    const int elem_conn_length = num_elem_in_block * num_nodes_per_elem;
+    int const *elem_conn = mesh.GetConnectivity(block_id);
+
+    auto elem_conn_d = block.GetD_ElementConnectivityView();
+    auto elem_conn_h = Kokkos::create_mirror_view(elem_conn_d);
+
+    for (int i = 0; i < elem_conn_length; i++)
+      elem_conn_h(i) = elem_conn[i];
+    Kokkos::deep_copy(elem_conn_d, elem_conn_h);
+
+    nimble_kokkos::DeviceVectorNodeGatheredView
+        gathered_reference_coordinate_block_d =
+        gathered_reference_coordinate_d.at(block_index);
+    nimble_kokkos::DeviceScalarNodeGatheredView gathered_lumped_mass_block_d =
+        gathered_lumped_mass_d.at(block_index);
+
+    GatherVectorNodeData(nimble::FieldID::ReferenceCoordinate,
+                         num_elem_in_block, num_nodes_per_elem,
+                         elem_conn_d,
+                         gathered_reference_coordinate_block_d);
+
+    // COMPUTE LUMPED MASS
+    Kokkos::parallel_for(
+        "Lumped Mass", num_elem_in_block, KOKKOS_LAMBDA(const int i_elem) {
+          nimble_kokkos::DeviceVectorNodeGatheredSubView
+              element_reference_coordinate_d =
+              Kokkos::subview(gathered_reference_coordinate_block_d,
+                              i_elem, Kokkos::ALL, Kokkos::ALL);
+          nimble_kokkos::DeviceScalarNodeGatheredSubView
+              element_lumped_mass_d = Kokkos::subview(
+              gathered_lumped_mass_block_d, i_elem, Kokkos::ALL);
+          element_d->ComputeLumpedMass(
+              density, element_reference_coordinate_d, element_lumped_mass_d);
+        });
+
+    // SCATTER TO NODE DATA
+    ScatterScalarNodeData(nimble::FieldID::LumpedMass, num_elem_in_block,
+                          num_nodes_per_elem, elem_conn_d,
+                          gathered_lumped_mass_block_d);
+
+    block_index += 1;
+
+  }
+  Kokkos::deep_copy(lumped_mass_h, lumped_mass_d);
+
+  watch_simulation_.pop_region_and_report_time();
+
+}
+
+void ModelData::UpdateOutputFields(const nimble::GenesisMesh &mesh,
+                                   std::vector<nimble_kokkos::DeviceVectorNodeGatheredView> &gathered_reference_coordinate_d,
+                                   std::vector<nimble_kokkos::DeviceVectorNodeGatheredView> &gathered_displacement_d)
+{
+  exodus_output_manager_.ComputeElementData(mesh, this,
+                                            blocks_,
+                                            gathered_reference_coordinate_d,
+                                            gathered_displacement_d);
+}
+
+void ModelData::ComputeElementKinematics(const nimble::GenesisMesh &mesh,
+                                         std::vector<nimble_kokkos::DeviceVectorNodeGatheredView> &gathered_reference_coordinate_d,
+                                         std::vector<nimble_kokkos::DeviceVectorNodeGatheredView> &gathered_displacement_d,
+                                         std::vector<nimble_kokkos::DeviceVectorNodeGatheredView> &gathered_internal_force_d)
+{
+
+  int block_index = 0;
+  for (auto &block_xyz : blocks_) {
+    //
+    int block_id = block_xyz.first;
+    nimble_kokkos::Block& block = block_xyz.second;
+    nimble::Element* element_d = block.GetDeviceElement();
+    int num_elem_in_block = mesh.GetNumElementsInBlock(block_id);
+    int num_nodes_per_elem = mesh.GetNumNodesPerElement(block_id);
+
+    auto elem_conn_d = block.GetD_ElementConnectivityView();
+    auto gathered_reference_coordinate_block_d = gathered_reference_coordinate_d.at(block_index);
+    auto gathered_displacement_block_d = gathered_displacement_d.at(block_index);
+    auto gathered_internal_force_block_d = gathered_internal_force_d.at(block_index);
+
+    GatherVectorNodeData(nimble::FieldID::ReferenceCoordinate, /* TODO SHOULD JUST PASS IN VIEW? */
+                         num_elem_in_block, /* TODO SHOULD BE ABLE TO GET THIS OFF VIEW "EXTENT" */
+                         num_nodes_per_elem, elem_conn_d,
+                         gathered_reference_coordinate_block_d);
+
+    GatherVectorNodeData(nimble::FieldID::Displacement,
+                         num_elem_in_block, num_nodes_per_elem,
+                         elem_conn_d, gathered_displacement_block_d);
+
+    auto deformation_gradient_step_np1_d =
+        GetDeviceFullTensorIntegrationPointData(block_id,
+                                                nimble::FieldID::DeformationGradient,
+                                                nimble::STEP_NP1);
+
+    // COMPUTE DEFORMATION GRADIENTS
+    Kokkos::parallel_for("Deformation Gradient", num_elem_in_block, KOKKOS_LAMBDA (const int i_elem) {
+      auto element_reference_coordinate_d = Kokkos::subview(gathered_reference_coordinate_block_d, i_elem, Kokkos::ALL(), Kokkos::ALL());
+      auto element_displacement_d = Kokkos::subview(gathered_displacement_block_d, i_elem, Kokkos::ALL(), Kokkos::ALL());
+      auto element_deformation_gradient_step_np1_d = Kokkos::subview(deformation_gradient_step_np1_d, i_elem, Kokkos::ALL(), Kokkos::ALL());
+      element_d->ComputeDeformationGradients(element_reference_coordinate_d,
+                                             element_displacement_d,
+                                             element_deformation_gradient_step_np1_d);
+    });
+
+    block_index += 1;
+
+  }
+
+}
+
+void ModelData::ComputeInternalForce(const nimble::GenesisMesh &mesh,
+                                     std::vector<nimble_kokkos::DeviceVectorNodeGatheredView> &gathered_reference_coordinate_d,
+                                     std::vector<nimble_kokkos::DeviceVectorNodeGatheredView> &gathered_displacement_d,
+                                     std::vector<nimble_kokkos::DeviceVectorNodeGatheredView> &gathered_internal_force_d)
+{
+
+  int block_index = 0;
+  for (auto &block_it : blocks_) {
+    int block_id = block_it.first;
+    nimble_kokkos::Block& block = block_it.second;
+    nimble::Element* element_d = block.GetDeviceElement();
+    int num_elem_in_block = mesh.GetNumElementsInBlock(block_id);
+    int num_nodes_per_elem = mesh.GetNumNodesPerElement(block_id);
+
+    auto elem_conn_d = block.GetD_ElementConnectivityView();
+    auto gathered_reference_coordinate_block_d = gathered_reference_coordinate_d.at(block_index);
+    auto gathered_displacement_block_d = gathered_displacement_d.at(block_index);
+    auto gathered_internal_force_block_d = gathered_internal_force_d.at(block_index);
+
+    auto stress_step_np1_d = GetDeviceSymTensorIntegrationPointData(block_id, nimble::FieldID::Stress,
+                                                                    nimble::STEP_NP1);
+
+    // COMPUTE NODAL FORCES
+    Kokkos::parallel_for("Force", num_elem_in_block, KOKKOS_LAMBDA (const int i_elem) {
+      auto element_reference_coordinate_d = Kokkos::subview(gathered_reference_coordinate_block_d, i_elem, Kokkos::ALL, Kokkos::ALL);
+      auto element_displacement_d = Kokkos::subview(gathered_displacement_block_d, i_elem, Kokkos::ALL, Kokkos::ALL);
+      auto element_stress_step_np1_d = Kokkos::subview(stress_step_np1_d, i_elem, Kokkos::ALL, Kokkos::ALL);
+      auto element_internal_force_d = Kokkos::subview(gathered_internal_force_block_d, i_elem, Kokkos::ALL, Kokkos::ALL);
+      element_d->ComputeNodalForces(element_reference_coordinate_d,
+                                    element_displacement_d,
+                                    element_stress_step_np1_d,
+                                    element_internal_force_d);
+    });
+
+    ScatterVectorNodeData(nimble::FieldID::InternalForce, num_elem_in_block, num_nodes_per_elem,
+                          elem_conn_d, gathered_internal_force_block_d);
+    
+    block_index += 1;
+
+  } // loop over blocks
+
+  auto internal_force_h = GetHostVectorNodeData(nimble::FieldID::InternalForce);
+  auto internal_force_d = GetDeviceVectorNodeData(nimble::FieldID::InternalForce);
+  Kokkos::deep_copy(internal_force_h, internal_force_d);
+
+}
+
+void ModelData::InitializeGatheredData(const nimble::GenesisMesh &mesh)
+{
+/*
+  int num_blocks = static_cast<int>(mesh.GetNumBlocks());
+
+  gathered_reference_coordinate_d.resize(num_blocks, nimble_kokkos::DeviceVectorNodeGatheredView("gathered_reference_coordinates", 1));
+  gathered_displacement_d.resize(num_blocks, nimble_kokkos::DeviceVectorNodeGatheredView("gathered_displacement", 1));
+  gathered_internal_force_d.resize(num_blocks, nimble_kokkos::DeviceVectorNodeGatheredView("gathered_internal_force", 1));
+
+  int block_index = 0;
+  for (const auto& block_it : blocks_) {
+      int block_id = block_it.first;
+      int num_elem_in_block = mesh.GetNumElementsInBlock(block_id);
+      Kokkos::resize(gathered_displacement_d.at(block_index), num_elem_in_block);
+      Kokkos::resize(gathered_internal_force_d.at(block_index), num_elem_in_block);
+  }
+*/
+}
+
+} // namespace nimble_kokkos
