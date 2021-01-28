@@ -236,6 +236,8 @@ public:
   std::map<int, std::vector< std::vector<double> > > GetElementDataForOutput()
   { return exodus_output_manager_.GetElementDataForOutput(this); }
 
+  void SynchronizeKinematicVectors();
+
 protected:
 
   using Data = std::unique_ptr< FieldBase >;

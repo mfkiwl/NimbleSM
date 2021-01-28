@@ -349,26 +349,24 @@ int ExplicitTimeIntegrator(nimble::Parser & parser,
 
   model_data->ComputeLumpedMass(mesh);
 
-  std::vector<nimble_kokkos::DeviceVectorNodeGatheredView> gathered_contact_force_d(num_blocks, nimble_kokkos::DeviceVectorNodeGatheredView("gathered_contact_force", 1));
-  for (block_index=0, block_it=blocks.begin(); block_it!=blocks.end() ; block_index++, block_it++) {
-    int block_id = block_it->first;
-    int num_elem_in_block = mesh.GetNumElementsInBlock(block_id);
-    Kokkos::resize(gathered_contact_force_d.at(block_index), num_elem_in_block);
-  }
-  //
+//  std::vector<nimble_kokkos::DeviceVectorNodeGatheredView> gathered_contact_force_d(num_blocks, nimble_kokkos::DeviceVectorNodeGatheredView("gathered_contact_force", 1));
+//  for (block_index=0, block_it=blocks.begin(); block_it!=blocks.end() ; block_index++, block_it++) {
+//    int block_id = block_it->first;
+//    int num_elem_in_block = mesh.GetNumElementsInBlock(block_id);
+//    Kokkos::resize(gathered_contact_force_d.at(block_index), num_elem_in_block);
+//  }
+
   auto displacement_h = model_data->GetHostVectorNodeData(nimble::FieldID::Displacement);
   auto displacement_d = model_data->GetDeviceVectorNodeData(nimble::FieldID::Displacement);
   Kokkos::deep_copy(displacement_h, (double)(0.0));
 
   auto velocity_h = model_data->GetHostVectorNodeData(nimble::FieldID::Velocity);
-  auto velocity_d = model_data->GetDeviceVectorNodeData(nimble::FieldID::Velocity);
   Kokkos::deep_copy(velocity_h, (double)(0.0));
 
   auto acceleration_h = model_data->GetHostVectorNodeData(nimble::FieldID::Acceleration);
   Kokkos::deep_copy(acceleration_h, (double)(0.0));
 
   auto internal_force_h = model_data->GetHostVectorNodeData(nimble::FieldID::InternalForce);
-  auto internal_force_d = model_data->GetDeviceVectorNodeData(nimble::FieldID::InternalForce);
   Kokkos::deep_copy(internal_force_h, (double)(0.0));
 
   auto contact_force_h = model_data->GetHostVectorNodeData(nimble::FieldID::ContactForce);
@@ -536,22 +534,11 @@ int ExplicitTimeIntegrator(nimble::Parser & parser,
       displacement_h(i,1) += delta_time * velocity_h(i,1);
       displacement_h(i,2) += delta_time * velocity_h(i,2);
     }
-
-    // Copy the current displacement and velocity value to device memory
-    Kokkos::deep_copy(displacement_d, displacement_h);
-    Kokkos::deep_copy(velocity_d, velocity_h);
-
     total_update_avu_time += watch_internal.pop_region_and_report_time();
 
     watch_internal.push_region("Force calculation");
 
     nimble_kokkos::ProfilingTimer watch_internal_details;
-    Kokkos::deep_copy(internal_force_d, (double)(0.0));
-    if (contact_enabled) {
-      watch_internal_details.push_region("Contact");
-      Kokkos::deep_copy(contact_force_d, (double)(0.0));
-      watch_internal_details.pop_region_and_report_time();
-    }
 
     // Compute element-level kinematics
 
@@ -626,13 +613,10 @@ int ExplicitTimeIntegrator(nimble::Parser & parser,
       watch_internal.push_region("Output");
 
       bc_manager.ApplyKinematicBC(time_current, time_previous, reference_coordinate_h, displacement_h, velocity_h);
-      Kokkos::deep_copy(displacement_d, displacement_h);
-      Kokkos::deep_copy(velocity_d, velocity_h);
-      //--
       model_data->UpdateOutputFields(mesh);
+      //
       auto elem_data_labels_for_output = model_data->GetElementDataLabelsForOutput();
       auto derived_elem_data_labels = model_data->GetDerivedElementDataLabelsForOutput();
-
       auto node_data_for_output = model_data->GetNodeDataForOutput();
       auto elem_data_for_output = model_data->GetElementDataForOutput();
       std::vector<double> glbl_data;
@@ -644,7 +628,6 @@ int ExplicitTimeIntegrator(nimble::Parser & parser,
                               elem_data_for_output,
                               derived_elem_data_labels,
                               drvd_elem_data);
-      //
       //
       if (contact_visualization) {
         contact_manager.ContactVisualizationWriteStep(time_current);

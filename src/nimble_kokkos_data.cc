@@ -962,6 +962,10 @@ void ModelData::ComputeLumpedMass(const nimble::GenesisMesh &mesh)
 
 void ModelData::UpdateOutputFields(const nimble::GenesisMesh &mesh)
 {
+  //--- Synchronize the vectors
+  SynchronizeKinematicVectors();
+
+  //--- Compute element data
   exodus_output_manager_.ComputeElementData(mesh, this,
                                             blocks_,
                                             gathered_reference_coordinate_d,
@@ -970,6 +974,11 @@ void ModelData::UpdateOutputFields(const nimble::GenesisMesh &mesh)
 
 void ModelData::ComputeElementKinematics(const nimble::GenesisMesh &mesh)
 {
+
+  SynchronizeKinematicVectors();
+
+  auto internal_force_d = GetDeviceVectorNodeData(nimble::FieldID::InternalForce);
+  Kokkos::deep_copy(internal_force_d, (double)(0.0));
 
   int block_index = 0;
   for (auto &block_xyz : blocks_) {
@@ -1075,6 +1084,17 @@ void ModelData::InitializeGatheredData(const nimble::GenesisMesh &mesh)
       Kokkos::resize(gathered_internal_force_d.at(block_index), num_elem_in_block);
       block_index += 1;
   }
+}
+
+void ModelData::SynchronizeKinematicVectors()
+{
+  auto displacement_h = GetHostVectorNodeData(nimble::FieldID::Displacement);
+  auto displacement_d = GetDeviceVectorNodeData(nimble::FieldID::Displacement);
+  Kokkos::deep_copy(displacement_h, displacement_d);
+  //
+  auto velocity_h = GetHostVectorNodeData(nimble::FieldID::Velocity);
+  auto velocity_d = GetDeviceVectorNodeData(nimble::FieldID::Velocity);
+  Kokkos::deep_copy(velocity_h, velocity_d);
 }
 
 } // namespace nimble_kokkos
