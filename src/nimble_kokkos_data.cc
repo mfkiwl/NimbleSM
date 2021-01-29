@@ -975,11 +975,6 @@ void ModelData::UpdateOutputFields(const nimble::GenesisMesh &mesh)
 void ModelData::ComputeElementKinematics(const nimble::GenesisMesh &mesh)
 {
 
-  SynchronizeKinematicVectors();
-
-  auto internal_force_d = GetDeviceVectorNodeData(nimble::FieldID::InternalForce);
-  Kokkos::deep_copy(internal_force_d, (double)(0.0));
-
   int block_index = 0;
   for (auto &block_xyz : blocks_) {
     //
@@ -1024,7 +1019,7 @@ void ModelData::ComputeElementKinematics(const nimble::GenesisMesh &mesh)
 
 }
 
-void ModelData::ComputeInternalForce(const nimble::GenesisMesh &mesh)
+void ModelData::ComputeNodalInternalForce(const nimble::GenesisMesh &mesh)
 {
 
   int block_index = 0;
@@ -1062,8 +1057,27 @@ void ModelData::ComputeInternalForce(const nimble::GenesisMesh &mesh)
 
   } // loop over blocks
 
-  auto internal_force_h = GetHostVectorNodeData(nimble::FieldID::InternalForce);
+}
+
+void ModelData::ComputeInternalForce(const nimble::GenesisMesh &mesh,
+                                     double time_previous, double time_current)
+{
+
+  SynchronizeKinematicVectors();
+
   auto internal_force_d = GetDeviceVectorNodeData(nimble::FieldID::InternalForce);
+  Kokkos::deep_copy(internal_force_d, (double)(0.0));
+
+  ComputeElementKinematics(mesh);
+
+  auto block_material_interface =
+      block_material_interface_factory_->create(time_previous, time_current,
+                                                block_data_, this);
+  block_material_interface->ComputeStress();
+
+  ComputeNodalInternalForce(mesh);
+
+  auto internal_force_h = GetHostVectorNodeData(nimble::FieldID::InternalForce);
   Kokkos::deep_copy(internal_force_h, internal_force_d);
 
 }
@@ -1095,6 +1109,24 @@ void ModelData::SynchronizeKinematicVectors()
   auto velocity_h = GetHostVectorNodeData(nimble::FieldID::Velocity);
   auto velocity_d = GetDeviceVectorNodeData(nimble::FieldID::Velocity);
   Kokkos::deep_copy(velocity_h, velocity_d);
+}
+
+void ModelData::SetStressData(
+    const nimble::GenesisMesh &mesh,
+    std::shared_ptr<nimble_kokkos::BlockMaterialInterfaceFactory>
+        block_material_interface_factory)
+{
+  block_material_interface_factory_ = std::move(block_material_interface_factory);
+  for (auto &&block_it : blocks_) {
+    int block_id = block_it.first;
+    auto &block = block_it.second;
+    nimble::Material *material_d = block.GetDeviceMaterialModel();
+    int num_elem_in_block = mesh.GetNumElementsInBlock(block_id);
+    int num_integration_points_per_element =
+        block.GetHostElement()->NumIntegrationPointsPerElement();
+    block_data_.emplace_back(block, material_d, block_id, num_elem_in_block,
+                            num_integration_points_per_element);
+  }
 }
 
 } // namespace nimble_kokkos

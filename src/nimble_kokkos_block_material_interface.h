@@ -46,12 +46,13 @@
 
 #include <nimble_data_utils.h>
 #include <nimble_kokkos_block.h>
-#include <nimble_kokkos_data.h>
 #include <nimble_kokkos_defs.h>
 #include <nimble_utils.h>
 
 namespace nimble_kokkos
 {
+
+class ModelData;
 
 using ElemPointRangePolicy = Kokkos::MDRangePolicy<Kokkos::Rank<2> >;
 inline ElemPointRangePolicy make_elem_point_range_policy(const int num_block_elems, const int num_points_per_elem)
@@ -80,8 +81,8 @@ struct BlockData {
 class BlockMaterialInterface {
  public:
   BlockMaterialInterface(const double time_n_, const double time_np1_,
-                         const std::vector<BlockData>& blocks_,
-                         nimble_kokkos::ModelData &model_data_)
+                         const std::vector<nimble_kokkos::BlockData>& blocks_,
+                         nimble_kokkos::ModelData *model_data_)
       :
       time_n(time_n_),
       time_np1(time_np1_),
@@ -96,7 +97,7 @@ class BlockMaterialInterface {
  protected:
   const double time_n;
   const double time_np1;
-  nimble_kokkos::ModelData &model_data;
+  nimble_kokkos::ModelData *model_data;
   std::vector<BlockData> blocks;
 };
 

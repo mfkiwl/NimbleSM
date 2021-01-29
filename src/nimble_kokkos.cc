@@ -48,17 +48,16 @@
 #include "nimble_contact_manager.h"
 #include "nimble_data_manager.h"
 #include "nimble_exodus_output.h"
-#include "nimble_exodus_output_manager.h"
 #include "nimble_parser.h"
 #include "nimble_timer.h"
 #include "nimble_timing_utils.h"
 #include "nimble_version.h"
 
 #include "nimble_kokkos_block.h"
+#include "nimble_kokkos_data.h"
 #include "nimble_kokkos_defs.h"
 #include "nimble_kokkos_material_factory.h"
 #include "nimble_kokkos_profiling.h"
-#include "nimble_kokkos_block_material_interface.h"
 #include "nimble_kokkos_block_material_interface_factory.h"
 
 #include <cassert>
@@ -315,46 +314,21 @@ int ExplicitTimeIntegrator(nimble::Parser & parser,
                            int my_rank
 ) {
 
-  int dim = mesh.GetDim();
   int num_nodes = static_cast<int>(mesh.GetNumNodes());
-  int num_blocks = static_cast<int>(mesh.GetNumBlocks());
 
   //--- UH Temporary solution
-  auto model_data = dynamic_cast<nimble_kokkos::ModelData *>(
-      data_manager.GetMacroScaleData().get());
-  std::map<int, nimble_kokkos::Block> blocks = model_data->GetBlocks();
+  auto model_data = dynamic_cast<nimble_kokkos::ModelData *>(data_manager.GetMacroScaleData().get());
+  model_data->SetStressData(mesh, block_material_interface_factory);
   //--- UH Temporary solution
-
-  // Build up block data for stress computation
-  std::vector<nimble_kokkos::BlockData> block_data;
-  for (auto &&block_it : blocks) {
-    int block_id = block_it.first;
-    nimble_kokkos::Block &block = block_it.second;
-    nimble::Material *material_d = block.GetDeviceMaterialModel();
-    int num_elem_in_block = mesh.GetNumElementsInBlock(block_id);
-    int num_integration_points_per_element =
-        block.GetHostElement()->NumIntegrationPointsPerElement();
-    block_data.emplace_back(block, material_d, block_id, num_elem_in_block,
-                            num_integration_points_per_element);
-  }
 
   auto lumped_mass_h =
       model_data->GetHostScalarNodeData(nimble::FieldID::LumpedMass);
   auto reference_coordinate_h =
       model_data->GetHostVectorNodeData(nimble::FieldID::ReferenceCoordinate);
 
-  int block_index;
-  std::map<int, nimble_kokkos::Block>::iterator block_it;
   nimble_kokkos::ProfilingTimer watch_simulation;
 
   model_data->ComputeLumpedMass(mesh);
-
-//  std::vector<nimble_kokkos::DeviceVectorNodeGatheredView> gathered_contact_force_d(num_blocks, nimble_kokkos::DeviceVectorNodeGatheredView("gathered_contact_force", 1));
-//  for (block_index=0, block_it=blocks.begin(); block_it!=blocks.end() ; block_index++, block_it++) {
-//    int block_id = block_it->first;
-//    int num_elem_in_block = mesh.GetNumElementsInBlock(block_id);
-//    Kokkos::resize(gathered_contact_force_d.at(block_index), num_elem_in_block);
-//  }
 
   auto displacement_h = model_data->GetHostVectorNodeData(nimble::FieldID::Displacement);
   auto displacement_d = model_data->GetDeviceVectorNodeData(nimble::FieldID::Displacement);
@@ -446,7 +420,6 @@ int ExplicitTimeIntegrator(nimble::Parser & parser,
 
   watch_simulation.pop_region_and_report_time();
 
-  //------
   watch_simulation.push_region("BC enforcement");
   double time_current(0.0), time_previous(0.0);
   double final_time = parser.FinalTime();
@@ -458,7 +431,6 @@ int ExplicitTimeIntegrator(nimble::Parser & parser,
   bc_manager.ApplyKinematicBC(time_current, time_previous, reference_coordinate_h,
                               displacement_h, velocity_h);
   watch_simulation.pop_region_and_report_time();
-  //------
 
   // Output to Exodus file
   watch_simulation.push_region("Output");
@@ -540,22 +512,9 @@ int ExplicitTimeIntegrator(nimble::Parser & parser,
 
     nimble_kokkos::ProfilingTimer watch_internal_details;
 
-    // Compute element-level kinematics
-
-    watch_internal_details.push_region("Element kinematics");
-    model_data->ComputeElementKinematics(mesh);
-    watch_internal_details.pop_region_and_report_time();
-
-    {
-      watch_internal_details.push_region("Material stress calculation");
-      auto block_material_interface = block_material_interface_factory->create(time_previous, time_current, block_data, *model_data);
-      block_material_interface->ComputeStress();
-      watch_internal_details.pop_region_and_report_time();
-    }
-
-    // Stress divergence
+    // Compute internal force
     watch_internal_details.push_region("Stress divergence calculation");
-    model_data->ComputeInternalForce(mesh);
+    model_data->ComputeInternalForce(mesh, time_previous, time_current);
     watch_internal_details.pop_region_and_report_time();
     total_internal_force_time += watch_internal.pop_region_and_report_time();
 

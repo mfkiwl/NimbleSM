@@ -54,10 +54,10 @@
 #include "nimble_data_utils.h"
 #include "nimble_exodus_output_manager.h"
 #include "nimble_kokkos_block.h"
+#include "nimble_kokkos_block_material_interface_factory.h"
 #include "nimble_kokkos_defs.h"
 #include "nimble_kokkos_profiling.h"
 #include "nimble_parser.h"
-
 
 namespace nimble_kokkos {
 
@@ -111,98 +111,24 @@ public:
 
   std::vector<std::string> GetFullTensorIntegrationPointDataLabels(int block_id) const ;
 
-  HostScalarNodeView GetHostScalarNodeData(ModelData::FieldIndex field_id);
+  void SetReferenceCoordinates(const nimble::GenesisMesh &mesh) override;
 
-  HostVectorNodeView GetHostVectorNodeData(ModelData::FieldIndex field_id);
-
-  HostSymTensorIntPtView GetHostSymTensorIntegrationPointData(int block_id,
-                                                              ModelData::FieldIndex field_id,
-                                                              nimble::Step step);
-
-  HostFullTensorIntPtView GetHostFullTensorIntegrationPointData(int block_id,
-                                                                ModelData::FieldIndex field_id,
-                                                                nimble::Step step);
-
-  HostScalarElemView GetHostScalarElementData(int block_id,
-                                              ModelData::FieldIndex field_id);
-
-  HostSymTensorElemView GetHostSymTensorElementData(int block_id,
-                                                    ModelData::FieldIndex field_id);
-
-  HostFullTensorElemView GetHostFullTensorElementData(int block_id,
-                                                      ModelData::FieldIndex field_id);
-
-  DeviceScalarNodeView GetDeviceScalarNodeData(ModelData::FieldIndex field_id);
-
-  DeviceVectorNodeView GetDeviceVectorNodeData(ModelData::FieldIndex field_id);
+  /////////////
+  DeviceVectorNodeView GetDeviceVectorNodeData(nimble::FieldID field_id);
 
   DeviceSymTensorIntPtView GetDeviceSymTensorIntegrationPointData(int block_id,
                                                                   nimble::FieldID field,
                                                                   nimble::Step step);
 
-  DeviceSymTensorIntPtView GetDeviceSymTensorIntegrationPointData(int block_id,
-                                                                  int field_id,
-                                                                  nimble::Step step);
-
   DeviceFullTensorIntPtView GetDeviceFullTensorIntegrationPointData(int block_id,
                                                                     nimble::FieldID field,
                                                                     nimble::Step step);
-
-  DeviceFullTensorIntPtView GetDeviceFullTensorIntegrationPointData(int block_id,
-                                                                    int field_id,
-                                                                    nimble::Step step);
-
-  DeviceScalarElemView GetDeviceScalarElementData(int block_id,
-                                                  ModelData::FieldIndex field_id);
-
-  DeviceSymTensorElemView GetDeviceSymTensorElementData(int block_id,
-                                                        ModelData::FieldIndex field_id);
-
-  DeviceFullTensorElemView GetDeviceFullTensorElementData(int block_id,
-                                                          ModelData::FieldIndex field_id);
-
-  DeviceScalarNodeGatheredView GatherScalarNodeData(ModelData::FieldIndex field_id,
-                                                    int num_elements,
-                                                    int num_nodes_per_element,
-                                                    const DeviceElementConnectivityView& elem_conn_d,
-                                                    DeviceScalarNodeGatheredView gathered_view_d);
-
-  DeviceVectorNodeGatheredView GatherVectorNodeData(ModelData::FieldIndex field_id,
-                                                    int num_elements,
-                                                    int num_nodes_per_element,
-                                                    const DeviceElementConnectivityView& elem_conn_d,
-                                                    DeviceVectorNodeGatheredView gathered_view_d);
-
-  void ScatterScalarNodeData(ModelData::FieldIndex field_id,
-                             int num_elements,
-                             int num_nodes_per_element,
-                             const DeviceElementConnectivityView& elem_conn_d,
-                             const DeviceScalarNodeGatheredView& gathered_view_d);
-
-  void ScatterVectorNodeData(ModelData::FieldIndex field_id,
-                             int num_elements,
-                             int num_nodes_per_element,
-                             const DeviceElementConnectivityView& elem_conn_d,
-                             const DeviceVectorNodeGatheredView& gathered_view_d);
-
-  void SetReferenceCoordinates(const nimble::GenesisMesh &mesh) override;
-
-#ifndef KOKKOS_ENABLE_QTHREADS
-  void ScatterScalarNodeDataUsingKokkosScatterView(ModelData::FieldIndex field_id,
-                                                   int num_elements,
-                                                   int num_nodes_per_element,
-                                                   const DeviceElementConnectivityView& elem_conn_d,
-                                                   const DeviceScalarNodeGatheredView& gathered_view_d);
-#endif
+  /////////////
 
   HostVectorNodeView GetHostVectorNodeData(nimble::FieldID field_id);
 
-  DeviceVectorNodeView GetDeviceVectorNodeData(nimble::FieldID field_id);
-
   HostScalarElemView GetHostScalarElementData(int block_id,
                                               nimble::FieldID field);
-  DeviceScalarNodeView GetDeviceScalarNodeData(nimble::FieldID field);
-
   HostScalarNodeView GetHostScalarNodeData(nimble::FieldID field);
 
   ModelData() = default;
@@ -216,19 +142,14 @@ public:
                         std::shared_ptr<nimble_kokkos::MaterialFactory> material_factory,
                         bool store_unrotated_stress);
 
-  std::map<int, nimble_kokkos::Block> &GetBlocks() { return blocks_; }
-
-  std::map<int, nimble_kokkos::Block> const &GetBlocks() const { return blocks_; }
-
   void SpecifyOutputFields(const std::string &output_field_string) override;
 
   void UpdateOutputFields(const nimble::GenesisMesh &mesh);
 
   void ComputeLumpedMass(const nimble::GenesisMesh &mesh);
 
-  void ComputeElementKinematics(const nimble::GenesisMesh &mesh);
-
-  void ComputeInternalForce(const nimble::GenesisMesh &mesh);
+  void ComputeInternalForce(const nimble::GenesisMesh &mesh,
+                            double time_previous, double time_current);
 
   std::vector< std::vector<double> > GetNodeDataForOutput()
   { return exodus_output_manager_.GetNodeDataForOutput(this); }
@@ -236,7 +157,8 @@ public:
   std::map<int, std::vector< std::vector<double> > > GetElementDataForOutput()
   { return exodus_output_manager_.GetElementDataForOutput(this); }
 
-  void SynchronizeKinematicVectors();
+  void SetStressData(const nimble::GenesisMesh &mesh,
+                     std::shared_ptr<nimble_kokkos::BlockMaterialInterfaceFactory> block_material_interface_factory);
 
 protected:
 
@@ -283,12 +205,67 @@ protected:
   std::vector<nimble_kokkos::DeviceVectorNodeGatheredView> gathered_displacement_d;
   std::vector<nimble_kokkos::DeviceVectorNodeGatheredView> gathered_internal_force_d;
 
+  std::shared_ptr<nimble_kokkos::BlockMaterialInterfaceFactory> block_material_interface_factory_;
+  std::vector<nimble_kokkos::BlockData> block_data_;
+
   friend class nimble_kokkos::ExodusOutputManager;
 
-  //// Function
+  //// Functions
+
+  void ComputeElementKinematics(const nimble::GenesisMesh &mesh);
+
+  void ComputeNodalInternalForce(const nimble::GenesisMesh &mesh);
+
+  void SynchronizeKinematicVectors();
+
   void InitializeGatheredData(const nimble::GenesisMesh &mesh);
 
-public:
+  DeviceScalarNodeView GetDeviceScalarNodeData(nimble::FieldID field);
+
+  DeviceVectorNodeView GetDeviceVectorNodeData(ModelData::FieldIndex field_id);
+
+  DeviceScalarNodeView GetDeviceScalarNodeData(ModelData::FieldIndex field_id);
+
+  DeviceSymTensorIntPtView GetDeviceSymTensorIntegrationPointData(int block_id,
+                                                                  int field_id,
+                                                                  nimble::Step step);
+
+  DeviceFullTensorIntPtView GetDeviceFullTensorIntegrationPointData(int block_id,
+                                                                    int field_id,
+                                                                    nimble::Step step);
+
+  DeviceScalarElemView GetDeviceScalarElementData(int block_id,
+                                                  ModelData::FieldIndex field_id);
+
+  DeviceSymTensorElemView GetDeviceSymTensorElementData(int block_id,
+                                                        ModelData::FieldIndex field_id);
+
+  DeviceFullTensorElemView GetDeviceFullTensorElementData(int block_id,
+                                                          ModelData::FieldIndex field_id);
+
+  DeviceScalarNodeGatheredView GatherScalarNodeData(ModelData::FieldIndex field_id,
+                                                    int num_elements,
+                                                    int num_nodes_per_element,
+                                                    const DeviceElementConnectivityView& elem_conn_d,
+                                                    DeviceScalarNodeGatheredView gathered_view_d);
+
+  DeviceVectorNodeGatheredView GatherVectorNodeData(ModelData::FieldIndex field_id,
+                                                    int num_elements,
+                                                    int num_nodes_per_element,
+                                                    const DeviceElementConnectivityView& elem_conn_d,
+                                                    DeviceVectorNodeGatheredView gathered_view_d);
+
+  void ScatterScalarNodeData(ModelData::FieldIndex field_id,
+                             int num_elements,
+                             int num_nodes_per_element,
+                             const DeviceElementConnectivityView& elem_conn_d,
+                             const DeviceScalarNodeGatheredView& gathered_view_d);
+
+  void ScatterVectorNodeData(ModelData::FieldIndex field_id,
+                             int num_elements,
+                             int num_nodes_per_element,
+                             const DeviceElementConnectivityView& elem_conn_d,
+                             const DeviceVectorNodeGatheredView& gathered_view_d);
 
   DeviceVectorNodeGatheredView
   GatherVectorNodeData(nimble::FieldID field, int num_elements,
@@ -305,6 +282,36 @@ public:
                         int num_nodes_per_element,
                         const DeviceElementConnectivityView &elem_conn_d,
                         const DeviceVectorNodeGatheredView &gathered_view_d);
+
+  HostScalarNodeView GetHostScalarNodeData(ModelData::FieldIndex field_id);
+
+  HostVectorNodeView GetHostVectorNodeData(ModelData::FieldIndex field_id);
+
+  HostSymTensorIntPtView GetHostSymTensorIntegrationPointData(int block_id,
+                                                              ModelData::FieldIndex field_id,
+                                                              nimble::Step step);
+
+  HostFullTensorIntPtView GetHostFullTensorIntegrationPointData(int block_id,
+                                                                ModelData::FieldIndex field_id,
+                                                                nimble::Step step);
+
+  HostScalarElemView GetHostScalarElementData(int block_id,
+                                              ModelData::FieldIndex field_id);
+
+  HostSymTensorElemView GetHostSymTensorElementData(int block_id,
+                                                    ModelData::FieldIndex field_id);
+
+  HostFullTensorElemView GetHostFullTensorElementData(int block_id,
+                                                      ModelData::FieldIndex field_id);
+
+#ifndef KOKKOS_ENABLE_QTHREADS
+  void ScatterScalarNodeDataUsingKokkosScatterView(ModelData::FieldIndex field_id,
+                                                   int num_elements,
+                                                   int num_nodes_per_element,
+                                                   const DeviceElementConnectivityView& elem_conn_d,
+                                                   const DeviceScalarNodeGatheredView& gathered_view_d);
+#endif
+
 };
 
 } // namespace

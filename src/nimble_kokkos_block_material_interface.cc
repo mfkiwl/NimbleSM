@@ -1,9 +1,10 @@
-#include <nimble_kokkos_block_material_interface.h>
-#include <nimble_material.h>
+#include "nimble_kokkos_block_material_interface.h"
+#include "nimble_material.h"
+#include "nimble_kokkos_data.h"
 
 namespace nimble_kokkos {
 
-namespace {
+namespace details {
 
 inline void compute_block_stress(const BlockData& block_data,
                                  const nimble_kokkos::DeviceFullTensorIntPtView& deformation_gradient_step_n_d,
@@ -34,15 +35,15 @@ inline void compute_block_stress(const BlockData& block_data,
 
 void BlockMaterialInterface::ComputeStress() const {
   for (auto &&block_data : blocks) {
-    auto deformation_gradient_step_n_d = model_data.GetDeviceFullTensorIntegrationPointData(
+    auto deformation_gradient_step_n_d = model_data->GetDeviceFullTensorIntegrationPointData(
         block_data.id, nimble::FieldID::DeformationGradient, nimble::STEP_N);
-    auto deformation_gradient_step_np1_d = model_data.GetDeviceFullTensorIntegrationPointData(
+    auto deformation_gradient_step_np1_d = model_data->GetDeviceFullTensorIntegrationPointData(
         block_data.id, nimble::FieldID::DeformationGradient, nimble::STEP_NP1);
-    auto stress_step_n_d = model_data.GetDeviceSymTensorIntegrationPointData(block_data.id, nimble::FieldID::Stress,
+    auto stress_step_n_d = model_data->GetDeviceSymTensorIntegrationPointData(block_data.id, nimble::FieldID::Stress,
                                                                              nimble::STEP_N);
-    auto stress_step_np1_d = model_data.GetDeviceSymTensorIntegrationPointData(block_data.id, nimble::FieldID::Stress,
+    auto stress_step_np1_d = model_data->GetDeviceSymTensorIntegrationPointData(block_data.id, nimble::FieldID::Stress,
                                                                                nimble::STEP_NP1);
-    compute_block_stress(block_data, deformation_gradient_step_n_d, deformation_gradient_step_np1_d,
+    details::compute_block_stress(block_data, deformation_gradient_step_n_d, deformation_gradient_step_np1_d,
                          stress_step_n_d, stress_step_np1_d, time_n, time_np1);
   }
 }
